@@ -14,9 +14,6 @@
         "test:coverage": "jest --coverage",
         "postinstall": "prisma generate"
     },
-    "prisma": {
-        "seed": "tsx prisma/seed.ts"
-    },
     "dependencies": {
         "@apollo/client": "^4.0.9",
         "@apollo/server": "^5.1.0",
