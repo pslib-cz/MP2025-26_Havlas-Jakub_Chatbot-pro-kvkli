@@ -1,53 +1,23 @@
-version: "3.8"
+# Install dependencies
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
 
-services:
-  app:
-    build: .
-    container_name: nextjs_app
-    restart: always
-    env_file:
-      - .env
-    depends_on:
-      - db
-      - chroma
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      CHROMA_URL: http://chroma:8000
-    expose:
-      - "3000"
+# Build app
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx prisma generate
+RUN npm run build
 
-  db:
-    image: postgres:16
-    container_name: postgres
-    restart: always
-    env_file:
-      - .env
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+# Production runner
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
 
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: chromadb
-    restart: always
-    volumes:
-      - chroma_data:/data
-    environment:
-      IS_PERSISTENT: "TRUE"
-      ANONYMIZED_TELEMETRY: "False"
-    expose:
-      - "8000"
+COPY --from=builder /app ./
 
-  nginx:
-    image: nginx:alpine
-    container_name: nginx
-    restart: always
-    ports:
-      - "80:80"
-    volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
-    depends_on:
-      - app
-
-volumes:
-  postgres_data:
-  chroma_data:
+EXPOSE 3000
+CMD ["npm", "start"]
