@@ -1,0 +1,22 @@
+services:
+  app:
+    container_name: nextjs_dev
+    command: npm run dev
+    working_dir: /app
+    volumes:
+      - .:/app:cached          # Mount local files
+      - /app/node_modules      # Keep container's node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+    stdin_open: true
+    tty: true
+
+  db:
+    ports:
+      - "5433:5432"
+
+  chroma:
+    ports:
+      - "8000:8000"

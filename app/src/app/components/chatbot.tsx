@@ -78,12 +78,16 @@ export default function Chatbot() {
   const [conversationId, setConversationId] = useState<number | null>(null);
 
   const handleClick = async () => {
-    setMessages((prev) => [...prev, input]);
+    if (!input.trim()) return;
+    
+    const messageToSend = input;
+    setInput("");
+    setMessages((prev) => [...prev, messageToSend]);
 
     try {
       const { data: addPromptResponse } = await addPromptMutation({
         variables: {
-          promptText: input,
+          promptText: messageToSend,
           conversationId,
         },
       });
@@ -99,8 +103,13 @@ export default function Chatbot() {
     } catch (err) {
       console.error("Error adding prompt:", err);
     }
+  };
 
-    setInput("");
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleClick();
+    }
   };
   const  handleLike = async () => {
       await addPromptFeedbackMutation({
@@ -174,12 +183,17 @@ export default function Chatbot() {
               ))}
             </div>
 
-            <div className="flex items-center p-3 bg-white dark:bg-gray-900 border-t dark:border-gray-700 gap-2">
-              <input
+            <div className="flex items-end p-3 bg-white dark:bg-gray-900 border-t dark:border-gray-700 gap-2">
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Sem můžete psát..."
-                className="flex-1 p-2 rounded-lg border dark:border-gray-600 bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                rows={1}
+                className="flex-1 p-2 rounded-lg border dark:border-gray-600 bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 resize-none overflow-hidden min-h-[40px] max-h-[120px]"
+                style={{
+                  height: `${Math.min(Math.max(40, input.split('\n').length * 24), 120)}px`
+                }}
               />
 
               <button

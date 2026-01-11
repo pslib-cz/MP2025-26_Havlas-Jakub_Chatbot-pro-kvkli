@@ -11,7 +11,9 @@
         "test:unit": "jest tests/unit",
         "test:smoke": "jest tests/smoke",
         "test:watch": "jest --watch",
-        "test:coverage": "jest --coverage"
+        "test:coverage": "jest --coverage",
+         "docker:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up",
+        "docker:prod": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d"
     },
     "dependencies": {
         "@apollo/client": "^4.0.9",
