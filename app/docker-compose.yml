@@ -31,10 +31,11 @@ services:
     volumes:
       - ./chroma_db:/data
     environment:
-    IS_PERSISTENT: "TRUE"
-    ANONYMIZED_TELEMETRY: "False"
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "False"
     expose:
       - "8000"
+
 
   nginx:
     image: nginx:stable
