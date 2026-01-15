@@ -43,9 +43,7 @@ jobs:
             set -e
             cd /var/www/apollo
 
-            cat << 'ENVEOF' > .env
-${{ secrets.ENV_FILE }}
-ENVEOF
+            cat << 'ENVEOF' > .env${{ secrets.ENV_FILE }}ENVEOF
 
             docker compose -f docker-compose.prod.yml down
             docker compose -f docker-compose.prod.yml build
