@@ -41,7 +41,7 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
         dimensions: 1536,
       });
 
-      const batchEmbeddings = response.data.map((item) => item.embedding);
+      const batchEmbeddings = response.data.map((item: { embedding: number[] }) => item.embedding);
       embeddings.push(...batchEmbeddings);
 
       console.log(`Generated embeddings for batch ${i / BATCH_SIZE + 1} (${batch.length} chunks)`);

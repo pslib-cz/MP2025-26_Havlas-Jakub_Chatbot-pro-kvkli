@@ -15,3 +15,5 @@ export function getOpenAI() {
 
   return client;
 }
+
+export const openai = getOpenAI();
