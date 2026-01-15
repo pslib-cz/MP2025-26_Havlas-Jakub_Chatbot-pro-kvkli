@@ -16,4 +16,10 @@ export function getOpenAI() {
   return client;
 }
 
-export const openai = getOpenAI();
+// Lazy initialization - only create when accessed
+export const openai = new Proxy({} as OpenAI, {
+  get(_target, prop) {
+    const instance = getOpenAI();
+    return instance[prop as keyof OpenAI];
+  }
+});
