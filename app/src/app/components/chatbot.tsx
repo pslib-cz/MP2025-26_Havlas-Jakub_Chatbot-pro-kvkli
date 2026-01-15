@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Send, MessageCircle } from "lucide-react";
+import { Send, MessageCircle, ChevronRight } from "lucide-react";
 import { gql } from "@apollo/client";
 import { useMutation } from "@apollo/client/react";
+import Image from "next/image";
 
 // Helper function to render markdown-style text
 function renderMarkdown(text: string) {
@@ -148,57 +149,84 @@ export default function Chatbot() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 30 }}
-            className="w-96 md:w-[500px] lg:w-[600px] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden"
+            className="w-96 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            style={{ height: '600px' }}
           >
-            <div className="bg-indigo-900 dark:bg-indigo-800 text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="bg-white text-indigo-900 p-1 rounded-full">
-                  <MessageCircle size={22} />
+            {/* Header */}
+            <div className="bg-[#3d4b6e] text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-white p-2 rounded-full">
+                  <Image src="/public/book-icon.svg" alt="Book" width={24} height={24} />
                 </div>
                 <span className="font-semibold text-lg">Aleš Knihovník</span>
               </div>
 
-              <button onClick={() => setIsOpen(false)}>
-                <span className="text-white text-2xl">›</span>
+              <button onClick={() => setIsOpen(false)} className="hover:bg-white/10 p-1 rounded">
+                <ChevronRight size={24} />
               </button>
             </div>
 
-            <div className="p-4 h-[500px] overflow-y-auto space-y-4 bg-gray-50 dark:bg-gray-800">
+            {/* Messages */}
+            <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50">
               {messages.map((msg, i) => (
-                <div key={i} className="flex flex-col gap-1">
-                  <div className="bg-gray-200 dark:bg-gray-700 text-black dark:text-white max-w-[80%] p-3 rounded-xl self-end">
-                    {msg}
+                <div key={i} className="space-y-3">
+                  {/* User message */}
+                  <div className="flex justify-end">
+                    <div className="bg-gray-200 text-black max-w-[75%] p-3 rounded-2xl rounded-tr-sm">
+                      {msg}
+                    </div>
                   </div>
-                  {answers[i] && (
-                    <>
-                      <div className="bg-indigo-900 dark:bg-indigo-700 text-white max-w-[80%] p-3 rounded-xl whitespace-pre-wrap">
-                        {renderMarkdown(answers[i])}
-                      </div>
-                      <button className="bg-indigo-900 dark:bg-indigo-700 text-white px-3 py-1 rounded" onClick={handleLike}> like </button>
-                      <button className="bg-indigo-900 dark:bg-indigo-700 text-white px-3 py-1 rounded" onClick={handleDisLike}> dislike  </button>
-                    </>
                   
+                  {/* Bot response */}
+                  {answers[i] && (
+                    <div className="flex gap-2 items-start">
+                      <div className="bg-[#4a5a7f] text-white p-2 rounded-full flex-shrink-0 mt-1">
+                        <Image src="/public/dots-icon.svg" alt="Bot" width={20} height={20} />
+                      </div>
+                      <div className="flex flex-col gap-2 flex-1">
+                        <div className="bg-[#3d4b6e] text-white max-w-[85%] p-3 rounded-2xl rounded-tl-sm whitespace-pre-wrap">
+                          {renderMarkdown(answers[i])}
+                        </div>
+                        <div className="flex gap-2 items-center">
+                          <button 
+                            onClick={handleLike}
+                            className="hover:bg-gray-200 p-1 rounded"
+                          >
+                            <Image src="/public/thumbs-up.svg" alt="Like" width={16} height={16} />
+                          </button>
+                          <button 
+                            onClick={handleDisLike}
+                            className="hover:bg-gray-200 p-1 rounded"
+                          >
+                            <Image src="/public/thumbs-down.svg" alt="Dislike" width={16} height={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               ))}
             </div>
 
-            <div className="flex items-end p-3 bg-white dark:bg-gray-900 border-t dark:border-gray-700 gap-2">
-              <textarea
+            {/* Input area */}
+            <div className="flex items-center p-3 bg-[#3d4b6e] gap-2">
+              <input
+                type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Sem můžete psát..."
-                rows={1}
-                className="flex-1 p-2 rounded-lg border dark:border-gray-600 bg-white dark:bg-gray-800 text-black dark:text-white placeholder-gray-500 dark:placeholder-gray-400 resize-none overflow-hidden min-h-[40px] max-h-[120px]"
-                style={{
-                  height: `${Math.min(Math.max(40, input.split('\n').length * 24), 120)}px`
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleClick();
+                  }
                 }}
+                placeholder="Sem můžete psát..."
+                className="flex-1 p-3 rounded-full bg-[#4a5a7f] text-white placeholder-gray-300 border-none outline-none"
               />
 
               <button
                 onClick={handleClick}
-                className="bg-indigo-700 dark:bg-indigo-600 text-white p-3 rounded-full hover:bg-indigo-800 dark:hover:bg-indigo-500"
+                className="bg-[#4a5a7f] text-white p-3 rounded-full hover:bg-[#5a6a8f]"
               >
                 <Send size={20} />
               </button>
