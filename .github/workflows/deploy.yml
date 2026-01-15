@@ -1,37 +1,53 @@
 name: Deploy App to VPS
 
 on:
-    push:
-        branches: [main]
-        paths:
-            - "app/**"
-            - ".github/workflows/deploy.yml"
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/deploy.yml"
 
 jobs:
-    deploy:
-        runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Checkout
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: Setup SSH
-              uses: webfactory/ssh-agent@v0.9.0
-              with:
-                  ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
 
-            - name: Sync app files
-              run: |
-                  rsync -az --delete \
-                  --exclude=node_modules \
-                  app/ ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo
+      - name: Add VPS to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
-            - name: Deploy
-              run: |
-                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-                    cd /var/www/apollo
-                    echo "${{ secrets.ENV_FILE }}" > .env
-                    docker compose -f docker-compose.prod.yml down
-                    docker compose -f docker-compose.prod.yml build
-                    docker compose -f docker-compose.prod.yml up -d
-                  EOF
+      - name: Ensure target directory exists
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/apollo"
+
+      - name: Sync app files to VPS
+        run: |
+          rsync -az \
+            --exclude=node_modules \
+            --exclude=.env \
+            app/ \
+            ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/
+
+      - name: Deploy with Docker Compose
+        run: |
+          ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+            set -e
+            cd /var/www/apollo
+
+            cat << 'ENVEOF' > .env
+${{ secrets.ENV_FILE }}
+ENVEOF
+
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml build
+            docker compose -f docker-compose.prod.yml up -d
+          EOF
