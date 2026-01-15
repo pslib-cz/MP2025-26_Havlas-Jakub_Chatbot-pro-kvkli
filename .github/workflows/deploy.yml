@@ -40,12 +40,12 @@ jobs:
       - name: Deploy with Docker Compose
         run: |
           ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-            set -e
-            cd /var/www/apollo
-
-            cat << 'ENVEOF' > .env${{ secrets.ENV_FILE }}ENVEOF
-
-            docker compose -f docker-compose.prod.yml down
-            docker compose -f docker-compose.prod.yml build
-            docker compose -f docker-compose.prod.yml up -d
-          EOF
+              set -e
+              cd /var/www/apollo
+        
+              cat << 'ENVEOF' > .env${{ secrets.ENV_FILE }} ENVEOF
+        
+              docker compose -f docker-compose.prod.yml down
+              docker compose -f docker-compose.prod.yml build
+              docker compose -f docker-compose.prod.yml up -d
+            EOF
