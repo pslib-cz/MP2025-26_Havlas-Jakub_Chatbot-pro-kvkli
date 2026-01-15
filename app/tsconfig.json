@@ -1,31 +1,37 @@
 {
-  "compilerOptions": {
-     "baseUrl": ".",
-    "target": "es2023",
-    "rootDirs": ["src"],
-    "outDir": "dist",
-    "lib": ["dom", "dom.iterable", "esnext", "es2023"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "types": ["node"],
-    "plugins": [
-      {
-        "name": "next"
-      }
+    "compilerOptions": {
+        "baseUrl": ".",
+        "target": "es2023",
+        "rootDirs": ["src"],
+        "outDir": "dist",
+        "lib": ["dom", "dom.iterable", "esnext", "es2023"],
+        "allowJs": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "noEmit": true,
+        "esModuleInterop": true,
+        "module": "esnext",
+        "moduleResolution": "node",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "jsx": "preserve",
+        "incremental": true,
+        "types": ["node"],
+        "plugins": [
+            {
+                "name": "next"
+            }
+        ],
+        "paths": {
+            "@/*": ["src/*"]
+        }
+    },
+    "include": [
+        "next-env.d.ts",
+        "**/*.ts",
+        "**/*.tsx",
+        ".next/types/**/*.ts",
+        "public/findRelevatFaqs.js"
     ],
-    "paths": {
-      "@/*": ["src/*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "public/findRelevatFaqs.js"],
-  "exclude": ["node_modules"]
+    "exclude": ["node_modules", "prisma"]
 }

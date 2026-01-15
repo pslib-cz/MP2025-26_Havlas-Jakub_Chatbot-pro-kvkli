@@ -5,16 +5,17 @@ COPY package*.json ./
 RUN npm ci
 
 # builder
-FROM node:20-alpine AS builder
+FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Prisma must run AFTER code is present
 RUN npx prisma generate
 RUN npm run build
 
 # runner
-FROM node:20-alpine AS runner
+FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
