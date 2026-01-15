@@ -1,22 +1,32 @@
-services:
-  app:
-    container_name: nextjs_dev
-    command: npm run dev
-    working_dir: /app
-    volumes:
-      - .:/app:cached          # Mount local files
-      - /app/node_modules      # Keep container's node_modules
-    ports:
-      - "3000:3000"
-    environment:
-      NODE_ENV: development
-    stdin_open: true
-    tty: true
+version: "3.8"
 
+services:
   db:
+    image: postgres:16
+    restart: always
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
 
   chroma:
+    image: chromadb/chroma:latest
+    container_name: chromadb
+    restart: always
     ports:
       - "8000:8000"
+    volumes:
+      - ./chroma_db:/data
+    environment:
+      - IS_PERSISTENT=TRUE
+      - CHROMA_DB_IMPL=sqlite
+      - ANONYMIZED_TELEMETRY=False
+
+volumes:
+  postgres_data:
