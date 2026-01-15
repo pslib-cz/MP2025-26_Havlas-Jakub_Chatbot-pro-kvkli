@@ -1,18 +1,10 @@
 import Chatbot from "./components/chatbot";
 export default function Home() {
+    return (
+        <>
+            <h1>If you see this, CI/CD works!</h1>
 
-  
-  return (
-    <>
-  
-      <h1>
-      Hello world!
-    </h1>
-   
-      <Chatbot />
- 
-    </>
-   
-    
-  );
+            <Chatbot />
+        </>
+    );
 }
