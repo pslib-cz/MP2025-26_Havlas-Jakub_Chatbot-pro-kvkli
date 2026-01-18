@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, color } from "framer-motion";
 import { Send, MessageCircle, ChevronRight } from "lucide-react";
 import { gql } from "@apollo/client";
 import { useMutation } from "@apollo/client/react";
@@ -132,31 +132,40 @@ export default function Chatbot() {
       });
   };
   return (
-    <div className="fixed bottom-6 right-6 z-50">
-      {!isOpen && (
-        <button
-          onClick={() => setIsOpen(true)}
-          className="bg-yellow-400 shadow-xl text-black font-medium px-4 py-3 rounded-full flex items-center gap-2 hover:bg-yellow-500 dark:bg-yellow-500 dark:text-black"
-        >
-          <span>Potřebuješ radu? Napiš!</span>
-          <MessageCircle size={22} />
-        </button>
-      )}
+    <div className="fixed bottom-6 right-6 z-50 max-sm:bottom-0 max-sm:right-0 max-sm:left-0">
+      <motion.button
+        animate={{ opacity: isOpen ? 0 : 1, scale: isOpen ? 1 : 1 }}
+        transition={{ duration: 0.3 }}
+        onClick={() => setIsOpen(true)}
+        className="bg-yellow-400 shadow-xl text-black font-medium px-4 py-3 rounded-full flex items-center gap-2 hover:bg-yellow-400 dark:bg-yellow-500 dark:text-black transition delay-150 duration-300 ease-in-out hover:-translate-y-1 hover:scale-110 max-sm:mx-auto max-sm:mb-4"
+        style={{ pointerEvents: isOpen ? 'none' : 'auto' }}
+      >
+        <span>Potřebuješ radu? Napiš!</span>
+        <Image 
+          src="/book-icon.svg" 
+          alt="Book" 
+          width={24} 
+          height={24} 
+          style={{ filter: 'brightness(0)' }}
+        />
+      </motion.button>
 
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 30 }}
-            className="w-96 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            key="chatbot-window"
+            initial={{   x: 400, scale: 1 }}
+            animate={{  x: 0, scale: 1 }}
+            exit={{  x: 400, scale: 1 }}
+            transition={{ duration: 0.3 }}
+            className="w-120 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col absolute bottom-0 right-0 max-sm:w-full max-sm:rounded-none max-sm:h-screen"
             style={{ height: '600px' }}
           >
             {/* Header */}
             <div className="bg-[#3d4b6e] text-white p-4 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="bg-white p-2 rounded-full">
-                  <Image src="/public/book-icon.svg" alt="Book" width={24} height={24} />
+                  <Image src="/book-icon.svg" alt="Book" width={24} height={24} />
                 </div>
                 <span className="font-semibold text-lg">Aleš Knihovník</span>
               </div>
@@ -166,7 +175,6 @@ export default function Chatbot() {
               </button>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50">
               {messages.map((msg, i) => (
                 <div key={i} className="space-y-3">
@@ -177,11 +185,11 @@ export default function Chatbot() {
                     </div>
                   </div>
                   
-                  {/* Bot response */}
+                
                   {answers[i] && (
                     <div className="flex gap-2 items-start">
                       <div className="bg-[#4a5a7f] text-white p-2 rounded-full flex-shrink-0 mt-1">
-                        <Image src="/public/dots-icon.svg" alt="Bot" width={20} height={20} />
+                        <Image src="/dots-icon.svg" alt="Bot" width={20} height={20} />
                       </div>
                       <div className="flex flex-col gap-2 flex-1">
                         <div className="bg-[#3d4b6e] text-white max-w-[85%] p-3 rounded-2xl rounded-tl-sm whitespace-pre-wrap">
@@ -192,13 +200,13 @@ export default function Chatbot() {
                             onClick={handleLike}
                             className="hover:bg-gray-200 p-1 rounded"
                           >
-                            <Image src="/public/thumbs-up.svg" alt="Like" width={16} height={16} />
+                            <Image src="/thumbs-up.svg" alt="Like" width={16} height={16} />
                           </button>
                           <button 
                             onClick={handleDisLike}
                             className="hover:bg-gray-200 p-1 rounded"
                           >
-                            <Image src="/public/thumbs-down.svg" alt="Dislike" width={16} height={16} />
+                            <Image src="/thumbs-down.svg" alt="Dislike" width={16} height={16} />
                           </button>
                         </div>
                       </div>
