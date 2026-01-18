@@ -1,89 +1,49 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence, color } from "framer-motion";
-import { Send, MessageCircle, ChevronRight } from "lucide-react";
-import { gql } from "@apollo/client";
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ChevronRight } from "lucide-react";
 import { useMutation } from "@apollo/client/react";
 import Image from "next/image";
-
-// Helper function to render markdown-style text
-function renderMarkdown(text: string) {
-  const parts = text.split(/(\*\*.*?\*\*)/g);
-  
-  return parts.map((part, index) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
-      const content = part.slice(2, -2);
-      return (
-        <strong key={index} className="font-bold text-lg">
-          {content}
-        </strong>
-      );
-    }
-    return <span key={index}>{part}</span>;
-  });
-}
-
-const ADD_PROMPT = gql`
-  mutation AddPrompt($promptText: String!, $conversationId: Int) {
-    addPrompt(promptText: $promptText, conversationId: $conversationId) {
-      conversationId
-      prompt {
-        promptId
-        promptText
-        answerText
-        userFeedback
-        conversationId
-      }
-    }
-  }
-`;
-
-const ADD_PROMPT_FEEDBACK = gql`
-mutation AddPromptFeedback($conversationId: Int!, $promptNth: Int!, $userFeedback: Boolean!) {
-addPromptFeedback(conversationId: $conversationId, promptNth: $promptNth, userFeedback: $userFeedback) {
-promptId
-userFeedback
-}
-}
-`;
-
-type FeedbackData = {
-  addPrompt: {
-    conversationId: number;
-    promptNth: number;
-    userFeedback: boolean;
-  };
-};
-
-type addPromptData = {
-  addPrompt: {
-    conversationId: number;
-    prompt: {
-      promptId: number;
-      promptText: string;
-      answerText: string;
-    };
-  };
-};
+import { ADD_PROMPT, ADD_PROMPT_FEEDBACK } from "./chatbot/graphql";
+import { AddPromptData, FeedbackData } from "@/types/chatbot";
+import { WAITING_MESSAGES } from "./chatbot/utils";
+import MessageBubble from "./chatbot/MessageBubble";
+import LoadingIndicator from "./chatbot/LoadingIndicator";
+import ChatInput from "./chatbot/ChatInput";
 
 export default function Chatbot() {
-  const [addPromptMutation] =
-    useMutation<addPromptData, { promptText: string; conversationId?: number | null }>(ADD_PROMPT);
-  const [addPromptFeedbackMutation] =
-    useMutation<FeedbackData>(ADD_PROMPT_FEEDBACK);
+  const [addPromptMutation] = useMutation<AddPromptData, { promptText: string; conversationId?: number | null }>(ADD_PROMPT);
+  const [addPromptFeedbackMutation] = useMutation<FeedbackData>(ADD_PROMPT_FEEDBACK);
+  
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<string[]>([]);
   const [answers, setAnswers] = useState<string[]>([]);
   const [conversationId, setConversationId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [waitingMessageIndex, setWaitingMessageIndex] = useState(0);
 
-  const handleClick = async () => {
+  useEffect(() => {
+    if (isLoading) {
+      const interval = setInterval(() => {
+        setWaitingMessageIndex((prev) => (prev + 1) % WAITING_MESSAGES.length);
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [isLoading]);
+
+  const handleSendMessage = async () => {
     if (!input.trim()) return;
     
     const messageToSend = input;
     setInput("");
     setMessages((prev) => [...prev, messageToSend]);
+    setIsLoading(true);
+    setWaitingMessageIndex(0);
+
+    // Add delay to see loading UI (remove this in production)
+    await new Promise(resolve => setTimeout(resolve, 5000));
 
     try {
       const { data: addPromptResponse } = await addPromptMutation({
@@ -103,34 +63,25 @@ export default function Chatbot() {
       ]);
     } catch (err) {
       console.error("Error adding prompt:", err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleClick();
-    }
-  };
-  const  handleLike = async () => {
+  const handleFeedback = async (messageIndex: number, isPositive: boolean) => {
+    try {
       await addPromptFeedbackMutation({
         variables: {
           conversationId: conversationId!,
-          promptNth: messages.length - 1,
-          userFeedback: true,
+          promptNth: messageIndex,
+          userFeedback: isPositive,
         },
       });
+    } catch (err) {
+      console.error("Error submitting feedback:", err);
+    }
   };
 
-  const  handleDisLike = async () => {
- await addPromptFeedbackMutation({
-        variables: {
-          conversationId: conversationId!,
-          promptNth: messages.length - 1,
-          userFeedback: false,
-        },
-      });
-  };
   return (
     <div className="fixed bottom-6 right-6 z-50 max-sm:bottom-0 max-sm:right-0 max-sm:left-0">
       <motion.button
@@ -154,9 +105,9 @@ export default function Chatbot() {
         {isOpen && (
           <motion.div
             key="chatbot-window"
-            initial={{   x: 400, scale: 1 }}
-            animate={{  x: 0, scale: 1 }}
-            exit={{  x: 400, scale: 1 }}
+            initial={{ x: 400, scale: 1 }}
+            animate={{ x: 0, scale: 1 }}
+            exit={{ x: 400, scale: 1 }}
             transition={{ duration: 0.3 }}
             className="w-120 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col absolute bottom-0 right-0 max-sm:w-full max-sm:rounded-none max-sm:h-screen"
             style={{ height: '600px' }}
@@ -169,76 +120,32 @@ export default function Chatbot() {
                 </div>
                 <span className="font-semibold text-lg">Aleš Knihovník</span>
               </div>
-
               <button onClick={() => setIsOpen(false)} className="hover:bg-white/10 p-1 rounded">
                 <ChevronRight size={24} />
               </button>
             </div>
 
+            {/* Messages */}
             <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50">
               {messages.map((msg, i) => (
-                <div key={i} className="space-y-3">
-                  {/* User message */}
-                  <div className="flex justify-end">
-                    <div className="bg-gray-200 text-black max-w-[75%] p-3 rounded-2xl rounded-tr-sm">
-                      {msg}
-                    </div>
-                  </div>
-                  
-                
-                  {answers[i] && (
-                    <div className="flex gap-2 items-start">
-                      <div className="bg-[#4a5a7f] text-white p-2 rounded-full flex-shrink-0 mt-1">
-                        <Image src="/dots-icon.svg" alt="Bot" width={20} height={20} />
-                      </div>
-                      <div className="flex flex-col gap-2 flex-1">
-                        <div className="bg-[#3d4b6e] text-white max-w-[85%] p-3 rounded-2xl rounded-tl-sm whitespace-pre-wrap">
-                          {renderMarkdown(answers[i])}
-                        </div>
-                        <div className="flex gap-2 items-center">
-                          <button 
-                            onClick={handleLike}
-                            className="hover:bg-gray-200 p-1 rounded"
-                          >
-                            <Image src="/thumbs-up.svg" alt="Like" width={16} height={16} />
-                          </button>
-                          <button 
-                            onClick={handleDisLike}
-                            className="hover:bg-gray-200 p-1 rounded"
-                          >
-                            <Image src="/thumbs-down.svg" alt="Dislike" width={16} height={16} />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <MessageBubble
+                  key={i}
+                  message={msg}
+                  answer={answers[i]}
+                  onLike={() => handleFeedback(i, true)}
+                  onDislike={() => handleFeedback(i, false)}
+                />
               ))}
+              
+              {isLoading && <LoadingIndicator messageIndex={waitingMessageIndex} />}
             </div>
 
-            {/* Input area */}
-            <div className="flex items-center p-3 bg-[#3d4b6e] gap-2">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleClick();
-                  }
-                }}
-                placeholder="Sem můžete psát..."
-                className="flex-1 p-3 rounded-full bg-[#4a5a7f] text-white placeholder-gray-300 border-none outline-none"
-              />
-
-              <button
-                onClick={handleClick}
-                className="bg-[#4a5a7f] text-white p-3 rounded-full hover:bg-[#5a6a8f]"
-              >
-                <Send size={20} />
-              </button>
-            </div>
+            {/* Input */}
+            <ChatInput
+              value={input}
+              onChange={setInput}
+              onSend={handleSendMessage}
+            />
           </motion.div>
         )}
       </AnimatePresence>
