@@ -1,16 +1,17 @@
 # deps
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
+ARG CACHEBUST=1
 COPY package*.json ./
 RUN npm ci
 
 # builder
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
+ARG CACHEBUST=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Prisma must run AFTER code is present
 RUN npx prisma generate
 RUN npm run build
 
