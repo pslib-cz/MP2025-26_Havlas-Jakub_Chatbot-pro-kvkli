@@ -42,8 +42,6 @@ export default function Chatbot() {
     setIsLoading(true);
     setWaitingMessageIndex(0);
 
-    // Add delay to see loading UI (remove this in production)
-    await new Promise(resolve => setTimeout(resolve, 5000));
 
     try {
       const { data: addPromptResponse } = await addPromptMutation({
