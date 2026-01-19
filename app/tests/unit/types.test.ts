@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import type { AddPromptData, FeedbackData } from '../src/types/chatbot';
+import type { AddPromptData, FeedbackData } from '../../types/index';
 
 describe('Chatbot Types', () => {
   describe('AddPromptData', () => {
