@@ -12,6 +12,7 @@ export type ContentSection = {
 
 export interface CrawledPage {
   url: string;
+  path: string; // Add path property
   title: string;
   language?: string;
   sections: ContentSection[];
@@ -187,15 +188,159 @@ function extractStructuredSections(mainContent: HTMLElement): ContentSection[] {
   return sections;
 }
 
+/**
+ * Extract dynamic event/article links from the page
+ */
+function extractDynamicLinks(root: HTMLElement, baseUrl: string): string[] {
+  const dynamicLinks: string[] = [];
+  
+  // Look for links matching dynamic patterns
+  const links = root.querySelectorAll('a[href*="/akce/id:"], a[href*="/akce/detail/"]');
+  
+  for (const link of links) {
+    const href = link.getAttribute('href');
+    if (href) {
+      try {
+        const absolute = new URL(href, baseUrl).toString();
+        dynamicLinks.push(absolute);
+      } catch {
+        // ignore invalid URLs
+      }
+    }
+  }
+  
+  return dynamicLinks;
+}
+
+/**
+ * Check if URL points to a binary/non-HTML resource
+ */
+function shouldSkipUrl(url: string): boolean {
+  const urlLower = url.toLowerCase();
+  
+  // Skip file downloads
+  if (urlLower.includes('/getfile/')) return true;
+  if (urlLower.includes('/download/')) return true;
+  
+  // Skip common binary file extensions
+  const binaryExtensions = [
+    '.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg',
+    '.mp4', '.avi', '.mov', '.wmv', '.flv',
+    '.mp3', '.wav', '.ogg', '.m4a',
+    '.zip', '.rar', '.7z', '.tar', '.gz',
+    '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.exe', '.dmg', '.pkg', '.deb', '.rpm'
+  ];
+  
+  return binaryExtensions.some(ext => urlLower.endsWith(ext));
+}
+
+/**
+ * Process a single URL (extracted for parallel execution)
+ */
+async function processUrl(
+  url: string,
+  baseOrigin: string
+): Promise<{ page: CrawledPage | null; links: string[] }> {
+  const normalized = normalizeUrl(url);
+  
+  if (shouldSkipUrl(normalized)) {
+    console.log("Skipping binary/file:", normalized);
+    return { page: null, links: [] };
+  }
+
+  console.log("Crawling:", normalized);
+
+  let html: string;
+  try {
+    const res = await axios.get(normalized, {
+      headers: {
+        "User-Agent": "RespectfulCrawler/1.0 (+slow)",
+      },
+      timeout: 10000,
+      validateStatus: (status) => status === 200, // Only accept 200 OK
+    });
+    
+    // Check Content-Type header to avoid parsing binary content
+    const contentType = res.headers['content-type'] || '';
+    if (!contentType.includes('text/html')) {
+      console.log("Skipping non-HTML content:", contentType, normalized);
+      return { page: null, links: [] };
+    }
+    
+    html = res.data;
+  } catch {
+    return { page: null, links: [] };
+  }
+
+  // Parse HTML
+  const root = parse(html);
+
+  // Extract structured content
+  const title =
+    root.querySelector("title")?.textContent?.trim() || "Untitled";
+  const language =
+    root.querySelector("html")?.getAttribute("lang") || undefined;
+
+  // Extract URL path
+  const urlObj = new URL(normalized);
+  const path = urlObj.pathname;
+
+  const mainContent = extractMainContent(root);
+  const sections = mainContent
+    ? extractStructuredSections(mainContent)
+    : [];
+
+  const page: CrawledPage = {
+    url: normalized,
+    path,
+    title,
+    language,
+    sections,
+  };
+
+  // Collect all links
+  const foundLinks: string[] = [];
+  
+  // Regular links
+  const links = root.querySelectorAll("a[href]");
+  for (const a of links) {
+    let href = a.getAttribute("href");
+    if (!href) continue;
+
+    try {
+      const absolute = normalizeUrl(new URL(href, normalized).toString());
+      if (absolute.startsWith(baseOrigin) && !shouldSkipUrl(absolute)) {
+        foundLinks.push(absolute);
+      }
+    } catch {
+      // ignore invalid URLs
+    }
+  }
+
+  // Dynamic links
+  const dynamicLinks = extractDynamicLinks(root, normalized);
+  for (const link of dynamicLinks) {
+    const absolute = normalizeUrl(link);
+    if (absolute.startsWith(baseOrigin) && !shouldSkipUrl(absolute)) {
+      foundLinks.push(absolute);
+    }
+  }
+
+  return { page, links: foundLinks };
+}
+
 export async function crawlSite(
   startUrl: string = "https://www.kvkli.cz",
   options?: {
     maxPages?: number;
     delayMs?: number;
+    concurrency?: number;
   }
 ): Promise<CrawlResponse> {
-  const maxPages = options?.maxPages ?? 100;
-  const delayMs = options?.delayMs ?? 5000;
+  const maxPages = options?.maxPages ?? 2000;
+  const delayMs = options?.delayMs ?? 1000; // Reduced delay with parallelism
+  const concurrency = options?.concurrency ?? 5; // Process 5 pages at once
 
   const visited = new Set<string>();
   const queue: string[] = [startUrl];
@@ -205,72 +350,42 @@ export async function crawlSite(
 
   try {
     while (queue.length > 0 && visited.size < maxPages) {
-      const currentUrl = queue.shift()!;
-      const normalized = normalizeUrl(currentUrl);
-
-      if (visited.has(normalized)) continue;
-      visited.add(normalized);
-
-      console.log("Crawling:", normalized);
-
-      let html: string;
-      try {
-        const res = await axios.get(normalized, {
-          headers: {
-            "User-Agent": "RespectfulCrawler/1.0 (+slow)",
-          },
-          timeout: 10000,
-        });
-        html = res.data;
-      } catch {
-        continue;
-      }
-
-      // Parse HTML
-      const root = parse(html);
-
-      // Extract structured content
-      const title =
-        root.querySelector("title")?.textContent?.trim() || "Untitled";
-      const language =
-        root.querySelector("html")?.getAttribute("lang") || undefined;
-
-      const mainContent = extractMainContent(root);
-      const sections = mainContent
-        ? extractStructuredSections(mainContent)
-        : [];
-
-      // Store structured page data
-      results.push({
-        url: normalized,
-        title,
-        language,
-        sections,
-      });
-
-      // Find links for further crawling
-      const links = root.querySelectorAll("a[href]");
-
-      for (const a of links) {
-        let href = a.getAttribute("href");
-        if (!href) continue;
-
-        try {
-          const absolute = normalizeUrl(
-            new URL(href, normalized).toString()
-          );
-
-          if (!absolute.startsWith(baseOrigin)) continue;
-          if (!visited.has(absolute)) {
-            queue.push(absolute);
-          }
-        } catch {
-          // ignore invalid URLs
+      // Take batch of URLs to process in parallel
+      const batch: string[] = [];
+      
+      while (batch.length < concurrency && queue.length > 0) {
+        const url = queue.shift()!;
+        const normalized = normalizeUrl(url);
+        
+        if (!visited.has(normalized)) {
+          visited.add(normalized);
+          batch.push(normalized);
         }
       }
 
-      // 🔥 THIS is what makes it slow & safe
-      await sleep(delayMs + Math.random() * 1000);
+      if (batch.length === 0) break;
+
+      // Process batch in parallel
+      const batchResults = await Promise.all(
+        batch.map(url => processUrl(url, baseOrigin))
+      );
+
+      // Collect results and new links
+      for (const { page, links } of batchResults) {
+        if (page) {
+          results.push(page);
+        }
+        
+        // Add new links to queue
+        for (const link of links) {
+          if (!visited.has(link)) {
+            queue.push(link);
+          }
+        }
+      }
+
+      // Small delay between batches
+      await sleep(delayMs);
     }
 
     const outputDir = path.join(process.cwd(), "crawler-output");

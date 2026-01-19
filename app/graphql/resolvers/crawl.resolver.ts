@@ -57,12 +57,12 @@ export const crawlResolvers = {
       console.log(`   - Removed: ${updateResult.removed}`);
 
       // Step 7: Clean up - delete the temporary JSON file
-      try {
-        await fs.unlink(crawlResult.outputFile);
-        console.log(`🗑️ Deleted temporary file: ${crawlResult.outputFile}`);
-      } catch (error) {
-        console.warn(`⚠️ Failed to delete temporary file: ${error}`);
-      }
+      // try {
+      //   await fs.unlink(crawlResult.outputFile);
+      //   console.log(`🗑️ Deleted temporary file: ${crawlResult.outputFile}`);
+      // } catch (error) {
+      //   console.warn(`⚠️ Failed to delete temporary file: ${error}`);
+      // }
 
       return {
         success: true,
