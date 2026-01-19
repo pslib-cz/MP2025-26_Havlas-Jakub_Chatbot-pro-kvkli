@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { WAITING_MESSAGES } from '../src/app/components/chatbot/utils';
+import { WAITING_MESSAGES } from '../../src/app/components/chatbot/utils';
 
 describe('Chatbot Utils', () => {
   describe('WAITING_MESSAGES', () => {
