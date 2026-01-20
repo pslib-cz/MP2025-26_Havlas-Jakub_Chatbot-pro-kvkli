@@ -129,8 +129,8 @@ export async function updateVectorDB(
       }));
 
       try {
-        // Batch the additions to avoid exceeding ChromaDB's max batch size
-        const CHROMA_BATCH_SIZE = 5000; // Stay under the 5461 limit
+        // Start with smaller batch size to avoid payload errors
+        let CHROMA_BATCH_SIZE = 100; // Much smaller initial size
         const totalBatches = Math.ceil(ids.length / CHROMA_BATCH_SIZE);
         
         for (let i = 0; i < ids.length; i += CHROMA_BATCH_SIZE) {
@@ -142,27 +142,48 @@ export async function updateVectorDB(
           const currentBatch = Math.floor(i / CHROMA_BATCH_SIZE) + 1;
           console.log(`Adding batch ${currentBatch}/${totalBatches} (${batchIds.length} chunks)...`);
           
-          // Retry logic for batch addition
+          // Retry logic with dynamic batch size reduction
           let retries = 3;
           let success = false;
+          let currentBatchSize = batchIds.length;
+          let retryOffset = 0;
           
-          while (retries > 0 && !success) {
+          while (retryOffset < batchIds.length) {
+            const retryBatchIds = batchIds.slice(retryOffset, retryOffset + currentBatchSize);
+            const retryBatchEmbeddings = batchEmbeddings.slice(retryOffset, retryOffset + currentBatchSize);
+            const retryBatchTexts = batchTexts.slice(retryOffset, retryOffset + currentBatchSize);
+            const retryBatchMetadatas = batchMetadatas.slice(retryOffset, retryOffset + currentBatchSize);
+            
             try {
               await collection.add({
-                ids: batchIds,
-                embeddings: batchEmbeddings,
-                documents: batchTexts,
-                metadatas: batchMetadatas,
+                ids: retryBatchIds,
+                embeddings: retryBatchEmbeddings,
+                documents: retryBatchTexts,
+                metadatas: retryBatchMetadatas,
               });
-              success = true;
-              console.log(`✓ Batch ${currentBatch}/${totalBatches} added successfully`);
-            } catch (batchError) {
+              
+              retryOffset += currentBatchSize;
+              console.log(`✓ Added ${retryOffset}/${batchIds.length} chunks from batch ${currentBatch}`);
+              
+              if (retryOffset >= batchIds.length) {
+                success = true;
+              }
+            } catch (batchError: any) {
+              const errorMessage = batchError?.message || String(batchError);
+              
+              // Check if it's a payload size error
+              if (errorMessage.includes('413') || errorMessage.includes('Payload Too Large')) {
+                console.warn(`Payload too large, reducing batch size from ${currentBatchSize} to ${Math.floor(currentBatchSize / 2)}`);
+                currentBatchSize = Math.max(1, Math.floor(currentBatchSize / 2));
+                continue; // Try again with smaller batch
+              }
+              
               retries--;
               if (retries > 0) {
                 console.warn(`Batch ${currentBatch} failed, retrying... (${retries} attempts left)`);
-                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+                await new Promise(resolve => setTimeout(resolve, 2000));
               } else {
-                throw new Error(`Failed to add batch ${currentBatch} after 3 attempts: ${batchError instanceof Error ? batchError.message : 'Unknown error'}`);
+                throw new Error(`Failed to add batch ${currentBatch} after 3 attempts: ${errorMessage}`);
               }
             }
           }
