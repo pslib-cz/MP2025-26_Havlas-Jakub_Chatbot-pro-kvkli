@@ -11,6 +11,9 @@ const BATCH_SIZE = 100; // Process embeddings in batches
  */
 async function getCollection() {
   try {
+    // Verify connection first
+    await chroma.heartbeat();
+    
     return await chroma.getOrCreateCollection({
       name: COLLECTION_NAME,
       metadata: { 
@@ -20,7 +23,7 @@ async function getCollection() {
     });
   } catch (error) {
     console.error("Error getting/creating collection:", error);
-    throw error;
+    throw new Error("Failed to connect to ChromaDB. Please ensure the ChromaDB server is running.");
   }
 }
 
@@ -94,51 +97,89 @@ export async function updateVectorDB(
   chunksToAdd: Chunk[],
   chunksToRemove: Chunk[]
 ): Promise<{ added: number; removed: number }> {
-  const collection = await getCollection();
+  try {
+    const collection = await getCollection();
 
-  // Remove deleted chunks
-  let removed = 0;
-  if (chunksToRemove.length > 0) {
-    const idsToRemove = chunksToRemove.map(getChunkId);
-    try {
-      await collection.delete({ ids: idsToRemove });
-      removed = idsToRemove.length;
-      console.log(`Removed ${removed} chunks from DB`);
-    } catch (error) {
-      console.error("Error removing chunks:", error);
+    // Remove deleted chunks
+    let removed = 0;
+    if (chunksToRemove.length > 0) {
+      const idsToRemove = chunksToRemove.map(getChunkId);
+      try {
+        await collection.delete({ ids: idsToRemove });
+        removed = idsToRemove.length;
+        console.log(`Removed ${removed} chunks from DB`);
+      } catch (error) {
+        console.error("Error removing chunks:", error);
+        throw new Error(`Failed to remove chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
-  }
 
-  // Add new/changed chunks
-  let added = 0;
-  if (chunksToAdd.length > 0) {
-    const texts = chunksToAdd.map((chunk) => chunk.text);
-    const embeddings = await generateEmbeddings(texts);
-    const ids = chunksToAdd.map(getChunkId);
-    const metadatas = chunksToAdd.map((chunk) => ({
-      url: chunk.url,
-      section_heading: chunk.section_heading,
-      chunk_index: chunk.chunk_index,
-      hash: chunk.hash,
-      last_crawled: chunk.last_crawled,
-    }));
+    // Add new/changed chunks
+    let added = 0;
+    if (chunksToAdd.length > 0) {
+      const texts = chunksToAdd.map((chunk) => chunk.text);
+      const embeddings = await generateEmbeddings(texts);
+      const ids = chunksToAdd.map(getChunkId);
+      const metadatas = chunksToAdd.map((chunk) => ({
+        url: chunk.url,
+        section_heading: chunk.section_heading,
+        chunk_index: chunk.chunk_index,
+        hash: chunk.hash,
+        last_crawled: chunk.last_crawled,
+      }));
 
-    try {
-      await collection.add({
-        ids,
-        embeddings,
-        documents: texts,
-        metadatas,
-      });
-      added = ids.length;
-      console.log(`Added ${added} chunks to DB`);
-    } catch (error) {
-      console.error("Error adding chunks:", error);
-      throw error;
+      try {
+        // Batch the additions to avoid exceeding ChromaDB's max batch size
+        const CHROMA_BATCH_SIZE = 5000; // Stay under the 5461 limit
+        const totalBatches = Math.ceil(ids.length / CHROMA_BATCH_SIZE);
+        
+        for (let i = 0; i < ids.length; i += CHROMA_BATCH_SIZE) {
+          const batchIds = ids.slice(i, i + CHROMA_BATCH_SIZE);
+          const batchEmbeddings = embeddings.slice(i, i + CHROMA_BATCH_SIZE);
+          const batchTexts = texts.slice(i, i + CHROMA_BATCH_SIZE);
+          const batchMetadatas = metadatas.slice(i, i + CHROMA_BATCH_SIZE);
+          
+          const currentBatch = Math.floor(i / CHROMA_BATCH_SIZE) + 1;
+          console.log(`Adding batch ${currentBatch}/${totalBatches} (${batchIds.length} chunks)...`);
+          
+          // Retry logic for batch addition
+          let retries = 3;
+          let success = false;
+          
+          while (retries > 0 && !success) {
+            try {
+              await collection.add({
+                ids: batchIds,
+                embeddings: batchEmbeddings,
+                documents: batchTexts,
+                metadatas: batchMetadatas,
+              });
+              success = true;
+              console.log(`✓ Batch ${currentBatch}/${totalBatches} added successfully`);
+            } catch (batchError) {
+              retries--;
+              if (retries > 0) {
+                console.warn(`Batch ${currentBatch} failed, retrying... (${retries} attempts left)`);
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+              } else {
+                throw new Error(`Failed to add batch ${currentBatch} after 3 attempts: ${batchError instanceof Error ? batchError.message : 'Unknown error'}`);
+              }
+            }
+          }
+        }
+        added = ids.length;
+        console.log(`✓ Successfully added ${added} chunks to DB`);
+      } catch (error) {
+        console.error("Error adding chunks:", error);
+        throw new Error(`Failed to add chunks to vector DB: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
-  }
 
-  return { added, removed };
+    return { added, removed };
+  } catch (error) {
+    console.error("Error in updateVectorDB:", error);
+    throw error;
+  }
 }
 
 
