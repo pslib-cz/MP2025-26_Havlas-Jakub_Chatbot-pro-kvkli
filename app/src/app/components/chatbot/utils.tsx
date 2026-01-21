@@ -19,5 +19,12 @@ export function renderMarkdown(text: string) {
 export const WAITING_MESSAGES = [
   "Už vařím",
   "Chvilku strpení, prosím",
-  "Hledám nejlepší odpověď"
+  "Hledám nejlepší odpověď",
+  "Přemýšlím 🤔",
+  "Skládám odpověď",
+  "Ještě moment",
+  "Zpracovávám dotaz",
+  "Dávám to dohromady",
+  "Kontroluji detaily",
+  "Už to skoro je"
 ];
