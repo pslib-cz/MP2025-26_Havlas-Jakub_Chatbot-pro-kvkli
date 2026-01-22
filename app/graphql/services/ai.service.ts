@@ -6,12 +6,11 @@ import { searchSimilarContent } from "./site.service";
 export const aiService = {
     async generateWithFaq({ promptText }: { promptText: string }) {
         const similarContent = await searchSimilarContent(promptText, 5);
-        //sad
 
         const contextText = similarContent.length
             ? similarContent
                   .map(
-                      (item) => `[${item.section}] (${item.url})\n${item.text}`
+                      (item) => `[${item.section}] (${item.url})\n${item.text}`,
                   )
                   .join("\n\n")
             : "Žádný relevantní obsah nebyl nalezen.";
@@ -104,7 +103,7 @@ export const aiService = {
 
         if (message.function_call?.name === "searchSimilarContent") {
             const { query, limit = 5 } = JSON.parse(
-                message.function_call.arguments
+                message.function_call.arguments,
             );
             const content = await searchSimilarContent(query, limit);
 
@@ -112,7 +111,7 @@ export const aiService = {
                 ? content
                       .map(
                           (item) =>
-                              `**${item.section}** (${item.url})\n${item.text}`
+                              `**${item.section}** (${item.url})\n${item.text}`,
                       )
                       .join("\n\n---\n\n")
                 : "Nenašel jsem žádný relevantní obsah.";
