@@ -9,6 +9,10 @@ __pycache__/
 .DS_Store
 .env.local
 
+# awawa
+app/logs/
+*.log
+
 # Project-specific
 harvester/**/bin/
 harvester/**/obj/

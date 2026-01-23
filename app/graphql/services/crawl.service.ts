@@ -3,6 +3,7 @@ import path from "path";
 import axios from "axios";
 import { parse } from "node-html-parser";
 import type { HTMLElement } from "node-html-parser";
+import LoggerService from "./logger.service";
 
 export type ContentSection = {
   heading: string;
@@ -269,7 +270,8 @@ async function processUrl(
     }
     
     html = res.data;
-  } catch {
+  } catch (error) {
+    LoggerService.logError(error as Error, "processUrl", { url: normalized });
     return { page: null, links: [] };
   }
 
@@ -397,12 +399,13 @@ export async function crawlSite(
       `kvkli-structured-content-${timestamp}.json`
     );
 
-    // Save structured content for vector embeddings / semantic search
     await fs.writeFile(
       outputFile,
       JSON.stringify(results, null, 2),
       "utf-8"
     );
+
+    LoggerService.info("Crawling completed", { pagesCount: visited.size, outputFile });
 
     return {
       success: true,
@@ -411,6 +414,7 @@ export async function crawlSite(
       outputFile,
     };
   } catch (err: any) {
+    LoggerService.logError(err as Error, "crawlSite", { startUrl, pagesVisited: visited.size });
     return {
       success: false,
       message: err.message ?? "Crawler failed",

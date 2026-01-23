@@ -1,6 +1,7 @@
 import { openai } from "../../lib/openAI";
 import { chroma } from "../../lib/chroma";
 import { Chunk, getChunkId } from "./compare.service";
+import LoggerService from "./logger.service";
 
 const COLLECTION_NAME = "kvkli_content";
 const EMBEDDING_MODEL = "text-embedding-3-small";
@@ -22,7 +23,7 @@ async function getCollection() {
       },
     });
   } catch (error) {
-    console.error("Error getting/creating collection:", error);
+    LoggerService.logError(error as Error, "getCollection");
     throw new Error("Failed to connect to ChromaDB. Please ensure the ChromaDB server is running.");
   }
 }
@@ -49,7 +50,7 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 
       console.log(`Generated embeddings for batch ${i / BATCH_SIZE + 1} (${batch.length} chunks)`);
     } catch (error) {
-      console.error(`Error generating embeddings for batch ${i}:`, error);
+      LoggerService.logError(error as Error, "generateEmbeddings", { batchIndex: i });
       throw error;
     }
   }
@@ -87,7 +88,7 @@ export async function fetchExistingChunks(): Promise<Chunk[]> {
     console.log(`Fetched ${chunks.length} existing chunks from DB`);
     return chunks;
   } catch (error) {
-    console.error("Error fetching existing chunks:", error);
+    LoggerService.logError(error as Error, "fetchExistingChunks");
     return [];
   }
 }
@@ -109,7 +110,7 @@ export async function updateVectorDB(
         removed = idsToRemove.length;
         console.log(`Removed ${removed} chunks from DB`);
       } catch (error) {
-        console.error("Error removing chunks:", error);
+        LoggerService.logError(error as Error, "updateVectorDB");
         throw new Error(`Failed to remove chunks: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
@@ -198,7 +199,7 @@ export async function updateVectorDB(
 
     return { added, removed };
   } catch (error) {
-    console.error("Error in updateVectorDB:", error);
+    LoggerService.logError(error as Error, "updateVectorDB");
     throw error;
   }
 }
@@ -242,11 +243,12 @@ export async function searchSimilarContent(
           });
         }
       }
-    }
-
+    } 
+    
+    LoggerService.info("Site search executed", { query, resultsCount: matches.length });
     return matches;
   } catch (error) {
-    console.error("Error searching similar content:", error);
+    LoggerService.logError(error as Error, "searchSimilarContent", { query, limit });
     return [];
   }
 }

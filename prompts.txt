@@ -361,3 +361,19 @@ chtěl bych se tě zeptat, dělám chatbota pro krajskou vědeckou knihovnu. pr�
 -------------------------
 
 if a next app is running on a server how to make something happen periodically once a week?
+
+
+-------------
+
+hello so I would like to add logging to my next js app graphhql apollo, prisma posgresSQL chroma db What are my options how to think about that and how to implement that?
+
+---------------
+
+okay so its an chatbot app so there is actually one component and rest is backend
+I mainly want to log what does the ai put into queries when accesing function calling vector databases. 
+also should I save the logs into database? Or file? How long? 
+I am working alone on my school thesis. 
+It is still not done, but I mainly care for learning, but I have aprox 1.5 monthss before submission
+
+-------------
+

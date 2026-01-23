@@ -1,5 +1,6 @@
 import { chroma } from "../../lib/chroma";
 import { openai } from "../../lib/openAI";
+import LoggerService from "./logger.service";
 
 //Četl jsem knihu o mašinkách, mohl bys mi doporučit nějaké další knížký o vlacích?
 
@@ -85,7 +86,7 @@ export const vectorService = {
             const ids = result.ids?.[0] || [];
 
             // Convert each stored document into structured book metadata
-            return docs.map((doc, idx) => {
+            const books = docs.map((doc, idx) => {
                 const parsed = parseEmbeddingDocument(doc);
                 return {
                     id: ids[idx],
@@ -95,8 +96,12 @@ export const vectorService = {
                     description: parsed.description,
                 };
             });
+
+            LoggerService.info("Book search executed", { query, resultsCount: books.length });
+
+            return books;
         } catch (err) {
-            console.error("❌ Vector search error:", err);
+            LoggerService.logError(err as Error, "searchBooks", { query });
             return [];
         }
     },
