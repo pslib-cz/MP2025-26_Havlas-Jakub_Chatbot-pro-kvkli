@@ -12,7 +12,7 @@ export const aiService = {
             const contextText = similarContent.length
                 ? similarContent
                       .map(
-                          (item) => `[${item.section}] (${item.url})\n${item.text}`,
+                          (item, idx) => `[Zdroj ${idx + 1}: ${item.section}]\nURL: ${item.url}\n${item.text}`,
                       )
                       .join("\n\n")
                 : "Žádný relevantní obsah nebyl nalezen.";
@@ -24,12 +24,15 @@ export const aiService = {
 Odpovídáš na otázky čtenářů o knihovně, službách, akcích a doporučuješ knihy.
 Vždy odpovídej přátelsky a profesionálně v češtině.
 Pokud máš k dispozici relevantní informace z webu knihovny, využij je pro odpověď.
+DŮLEŽITÉ: Když odpovídáš na dotaz pomocí informací z webu, vždy přidej na konec odpovědi odkazy ve formátu:
+"📎 Více informací: [Název sekce](URL)"
+Můžeš uvést více odkazů, pokud jsou relevantní.
 Pokud potřebuješ doporučit knihy, použij funkci recommendBooks.
 Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                 },
                 {
                     role: "system",
-                    content: `Následující informace jsou z webových stránek knihovny:\n\n${contextText}\n\nPoužij tyto informace k odpovědi na otázku uživatele.`,
+                    content: `Následující informace jsou z webových stránek knihovny:\n\n${contextText}\n\nPoužij tyto informace k odpovědi na otázku uživatele a VŽDY přidej odkazy na relevantní stránky.`,
                 },
                 { role: "user", content: promptText },
             ];
@@ -99,13 +102,32 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                     : "Nenašel jsem žádné knihy odpovídající vašemu popisu.";
             }
 
-            // Return direct response from AI
-            const answer = message.content ?? "Omlouám se, ale nemohu odpovědět na váš dotaz.";
+            // Return direct response from AI with sources
+            let answer = message.content ?? "Omlouám se, ale nemohu odpovědět na váš dotaz.";
+
+            // If AI didn't include links and we have similar content, append them
+            if (similarContent.length > 0 && !answer.includes('http')) {
+                const uniqueUrls = new Map<string, { section: string; url: string }>();
+                
+                similarContent.forEach(item => {
+                    if (!uniqueUrls.has(item.url)) {
+                        uniqueUrls.set(item.url, { section: item.section, url: item.url });
+                    }
+                });
+                
+                const links = Array.from(uniqueUrls.values())
+                    .slice(0, 3) // Max 3 links
+                    .map(item => `[${item.section}](${item.url})`)
+                    .join('\n');
+                
+                answer += `\n\n📎 Více informací:\n${links}`;
+            }
 
             LoggerService.info("AI response generated", { 
                 promptText, 
                 hasContent: !!message.content,
-                hasFunctionCall: !!message.function_call 
+                hasFunctionCall: !!message.function_call,
+                sourcesCount: similarContent.length
             });
 
             return answer;

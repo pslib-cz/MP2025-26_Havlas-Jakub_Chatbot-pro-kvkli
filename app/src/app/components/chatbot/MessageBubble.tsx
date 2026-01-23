@@ -1,13 +1,60 @@
 "use client";
 
-import Image from "next/image";
-import { renderMarkdown } from "./utils";
+import React from "react";
+import { ThumbsUp, ThumbsDown } from "lucide-react";
 
 interface MessageBubbleProps {
     message: string;
     answer?: string;
     onLike: () => void;
     onDislike: () => void;
+}
+
+function parseMarkdownLinks(text: string): React.ReactElement[] {
+    const parts: React.ReactElement[] = [];
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let lastIndex = 0;
+    let match;
+    let key = 0;
+
+    while ((match = linkRegex.exec(text)) !== null) {
+        // Add text before the link
+        if (match.index > lastIndex) {
+            parts.push(
+                <span key={`text-${key++}`}>
+                    {text.substring(lastIndex, match.index)}
+                </span>
+            );
+        }
+
+        // Add the link
+        const linkText = match[1];
+        const url = match[2];
+        parts.push(
+            <a
+                key={`link-${key++}`}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white hover:text-gray-200 underline"
+            >
+                {linkText}
+            </a>
+        );
+
+        lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < text.length) {
+        parts.push(
+            <span key={`text-${key++}`}>
+                {text.substring(lastIndex)}
+            </span>
+        );
+    }
+
+    return parts.length > 0 ? parts : [<span key="text-0">{text}</span>];
 }
 
 export default function MessageBubble({
@@ -17,50 +64,38 @@ export default function MessageBubble({
     onDislike,
 }: MessageBubbleProps) {
     return (
-        <div className="space-y-3">
+        <>
             {/* User message */}
             <div className="flex justify-end">
-                <div className="bg-gray-200 text-black max-w-[75%] p-3 rounded-2xl rounded-tr-sm">
+                <div className="bg-[#3d4b6e] text-white px-4 py-2 rounded-2xl rounded-tr-none max-w-[80%]">
                     {message}
                 </div>
             </div>
 
             {/* Bot answer */}
             {answer && (
-                <div className="flex gap-2 items-start">
-                    <div className="flex flex-col gap-1 flex-1">
-                        <div className="bg-[#3d4b6e] text-white max-w-[85%] p-3 rounded-2xl rounded-tl-sm whitespace-pre-wrap">
-                            {renderMarkdown(answer)}
-                        </div>
-                        <div className="flex gap-2 items-center">
-                            <button
-                                onClick={onLike}
-                                className="hover:bg-gray-200 p-1 rounded"
-                            >
-                                <Image
-                                    src="/thumbs-up.svg"
-                                    alt="Like"
-                                    className="brightness-0 saturate-100 opacity-40"
-                                    width={16}
-                                    height={16}
-                                />
-                            </button>
-                            <button
-                                onClick={onDislike}
-                                className="hover:bg-gray-200 p-1 rounded"
-                            >
-                                <Image
-                                    src="/thumbs-down.svg"
-                                    alt="Dislike"
-                                    className="brightness-0 saturate-100 opacity-40"
-                                    width={16}
-                                    height={16}
-                                />
-                            </button>
-                        </div>
+                <div className="flex flex-col gap-2">
+                    <div className="bg-[#3d4b6e] text-white px-4 py-2 rounded-2xl rounded-tl-none max-w-[80%] shadow-sm whitespace-pre-wrap">
+                        {parseMarkdownLinks(answer)}
+                    </div>
+                    <div className="flex gap-2 ml-2">
+                        <button
+                            onClick={onLike}
+                            className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                            aria-label="Like"
+                        >
+                            <ThumbsUp size={16} className="text-gray-500" />
+                        </button>
+                        <button
+                            onClick={onDislike}
+                            className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                            aria-label="Dislike"
+                        >
+                            <ThumbsDown size={16} className="text-gray-500" />
+                        </button>
                     </div>
                 </div>
             )}
-        </div>
+        </>
     );
 }
