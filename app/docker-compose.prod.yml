@@ -9,10 +9,10 @@ services:
             - ./logs:/app/logs
         depends_on:
             - db
-            - chroma
+            - chromadb
         environment:
             DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-            CHROMA_URL: http://chroma:8000
+            CHROMA_URL: http://chromadb:8000
         expose:
             - "3000"
 
@@ -25,12 +25,12 @@ services:
         volumes:
             - postgres_data:/var/lib/postgresql/data
 
-    chroma:
+    chromadb:
         image: chromadb/chroma:latest
         container_name: chromadb
         restart: always
         volumes:
-            - ./chroma_db:/data
+            - chroma_data:/chroma/chroma
         environment:
             IS_PERSISTENT: "TRUE"
             ANONYMIZED_TELEMETRY: "False"
