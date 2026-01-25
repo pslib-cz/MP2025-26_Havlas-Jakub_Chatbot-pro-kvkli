@@ -5,27 +5,60 @@ import LoggerService from "./logger.service";
 
 const COLLECTION_NAME = "kvkli_content";
 const EMBEDDING_MODEL = "text-embedding-3-small";
-const BATCH_SIZE = 100; // Process embeddings in batches
+const BATCH_SIZE = 100;
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000;
+
+/**
+ * Retry helper for ChromaDB operations
+ */
+async function retryOperation<T>(
+  operation: () => Promise<T>,
+  operationName: string,
+  retries = MAX_RETRIES
+): Promise<T> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await operation();
+    } catch (error) {
+      const isLastAttempt = i === retries - 1;
+      if (isLastAttempt) {
+        LoggerService.logError(error as Error, `${operationName} (final attempt)`, { attempt: i + 1 });
+        throw error;
+      }
+      LoggerService.warn(`${operationName} failed, retrying...`, { attempt: i + 1, error: (error as Error).message });
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+    }
+  }
+  throw new Error(`Failed after ${retries} attempts`);
+}
 
 /**
  * Get or create Chroma collection for content chunks
  */
 async function getCollection() {
-  try {
-    // Verify connection first
-    await chroma.heartbeat();
-    
-    return await chroma.getOrCreateCollection({
-      name: COLLECTION_NAME,
-      metadata: { 
-        description: "KVKLI website content chunks",
-        "hnsw:space": "cosine"
-      },
-    });
-  } catch (error) {
-    LoggerService.logError(error as Error, "getCollection");
-    throw new Error("Failed to connect to ChromaDB. Please ensure the ChromaDB server is running.");
-  }
+  return retryOperation(async () => {
+    try {
+      // Verify connection first
+      await chroma.heartbeat();
+      
+      return await chroma.getOrCreateCollection({
+        name: COLLECTION_NAME,
+        metadata: { 
+          description: "KVKLI website content chunks",
+          "hnsw:space": "cosine"
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      LoggerService.logError(
+        new Error(`ChromaDB connection failed: ${errorMessage}`), 
+        "getCollection",
+        { chromaUrl: process.env.CHROMA_URL || 'not set' }
+      );
+      throw new Error("ChromaDB is not accessible. Please ensure the ChromaDB server is running and CHROMA_URL is correctly configured.");
+    }
+  }, "getCollection");
 }
 
 /**
@@ -249,6 +282,8 @@ export async function searchSimilarContent(
     return matches;
   } catch (error) {
     LoggerService.logError(error as Error, "searchSimilarContent", { query, limit });
+    // Return empty array instead of crashing when ChromaDB is down
+    LoggerService.warn("Returning empty results due to ChromaDB error");
     return [];
   }
 }

@@ -7,7 +7,15 @@ import LoggerService from "./logger.service";
 export const aiService = {
     async generateWithFaq({ promptText }: { promptText: string }) {
         try {
-            const similarContent = await searchSimilarContent(promptText, 5);
+            let similarContent: Awaited<ReturnType<typeof searchSimilarContent>> = [];
+            
+            try {
+                similarContent = await searchSimilarContent(promptText, 5);
+            } catch (searchError) {
+                LoggerService.warn("Failed to search similar content, continuing without context", { 
+                    error: (searchError as Error).message 
+                });
+            }
 
             const contextText = similarContent.length
                 ? similarContent
