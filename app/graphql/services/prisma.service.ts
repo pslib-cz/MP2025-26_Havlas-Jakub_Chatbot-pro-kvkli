@@ -1,5 +1,4 @@
 import { prisma } from "../../lib/prisma";
-import { AddConvoFeedbackArgs } from "../../types";
 
 export const prismaService = {
   // Conversation operations
