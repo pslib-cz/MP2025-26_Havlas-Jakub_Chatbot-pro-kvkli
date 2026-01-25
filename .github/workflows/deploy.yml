@@ -70,7 +70,13 @@ jobs:
           ${{ secrets.ENV_FILE }}
           ENVEOF
         
-              docker compose -f docker-compose.prod.yml down
+              # Stop and remove all containers including orphans
+              docker compose -f docker-compose.prod.yml down --remove-orphans
+              
+              # Remove any dangling containers with the same names
+              docker rm -f chromadb postgres nextjs_app nginx 2>/dev/null || true
+              
+              # Build and start services
               docker compose -f docker-compose.prod.yml build
               docker compose -f docker-compose.prod.yml up -d
               
