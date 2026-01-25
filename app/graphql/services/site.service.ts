@@ -278,7 +278,7 @@ export async function searchSimilarContent(
       }
     } 
     
-    LoggerService.info("Site search executed", { query, resultsCount: matches.length });
+    LoggerService.info("Site search executed", { query, resultsCount: matches.length, matches });
     return matches;
   } catch (error) {
     LoggerService.logError(error as Error, "searchSimilarContent", { query, limit });
