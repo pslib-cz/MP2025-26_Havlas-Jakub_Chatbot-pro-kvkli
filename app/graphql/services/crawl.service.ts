@@ -26,6 +26,57 @@ export interface CrawlResponse {
   outputFile: string;
 }
 
+export interface CrawlProgress {
+  status: 'idle' | 'running' | 'completed' | 'error';
+  pagesVisited: number;
+  pagesInQueue: number;
+  totalPages: number;
+  currentUrl: string | null;
+  startTime: number | null;
+  endTime: number | null;
+  error: string | null;
+}
+
+// Global progress tracker
+let currentProgress: CrawlProgress = {
+  status: 'idle',
+  pagesVisited: 0,
+  pagesInQueue: 0,
+  totalPages: 0,
+  currentUrl: null,
+  startTime: null,
+  endTime: null,
+  error: null,
+};
+
+// Stop signal
+let shouldStop = false;
+
+export function getCrawlProgress(): CrawlProgress {
+  // Always return a valid progress object with explicit null values
+  return {
+    status: currentProgress.status,
+    pagesVisited: currentProgress.pagesVisited,
+    pagesInQueue: currentProgress.pagesInQueue,
+    totalPages: currentProgress.totalPages,
+    currentUrl: currentProgress.currentUrl ?? null,
+    startTime: currentProgress.startTime ?? null,
+    endTime: currentProgress.endTime ?? null,
+    error: currentProgress.error ?? null,
+  };
+}
+
+export function stopCrawl(): boolean {
+  if (currentProgress.status === 'running') {
+    shouldStop = true;
+    currentProgress.status = 'error';
+    currentProgress.error = 'Crawl stopped by user';
+    currentProgress.endTime = Date.now();
+    return true;
+  }
+  return false;
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -344,6 +395,19 @@ export async function crawlSite(
   const delayMs = options?.delayMs ?? 1000; // Reduced delay with parallelism
   const concurrency = options?.concurrency ?? 5; // Process 5 pages at once
 
+  // Reset stop signal and progress
+  shouldStop = false;
+  currentProgress = {
+    status: 'running',
+    pagesVisited: 0,
+    pagesInQueue: 1,
+    totalPages: maxPages,
+    currentUrl: null,
+    startTime: Date.now(),
+    endTime: null,
+    error: null,
+  };
+
   const visited = new Set<string>();
   const queue: string[] = [startUrl];
   const results: CrawledPage[] = [];
@@ -351,8 +415,11 @@ export async function crawlSite(
   const baseOrigin = new URL(startUrl).origin;
 
   try {
-    while (queue.length > 0 && visited.size < maxPages) {
-      // Take batch of URLs to process in parallel
+    while (queue.length > 0 && visited.size < maxPages && !shouldStop) {
+      // Update progress
+      currentProgress.pagesVisited = visited.size;
+      currentProgress.pagesInQueue = queue.length;
+
       const batch: string[] = [];
       
       while (batch.length < concurrency && queue.length > 0) {
@@ -367,18 +434,23 @@ export async function crawlSite(
 
       if (batch.length === 0) break;
 
-      // Process batch in parallel
+      // Check for stop signal
+      if (shouldStop) {
+        console.log("Crawl stopped by user");
+        break;
+      }
+
+      currentProgress.currentUrl = batch[0];
+
       const batchResults = await Promise.all(
         batch.map(url => processUrl(url, baseOrigin))
       );
 
-      // Collect results and new links
       for (const { page, links } of batchResults) {
         if (page) {
           results.push(page);
         }
         
-        // Add new links to queue
         for (const link of links) {
           if (!visited.has(link)) {
             queue.push(link);
@@ -388,6 +460,25 @@ export async function crawlSite(
 
       // Small delay between batches
       await sleep(delayMs);
+    }
+
+    // Check if stopped
+    if (shouldStop) {
+      LoggerService.warn("Crawl stopped by user", { pagesVisited: visited.size });
+      
+      currentProgress = {
+        ...currentProgress,
+        status: 'error',
+        error: 'Stopped by user',
+        endTime: Date.now(),
+      };
+
+      return {
+        success: false,
+        message: "Crawl stopped by user",
+        pagesCount: visited.size,
+        outputFile: "",
+      };
     }
 
     const outputDir = path.join(process.cwd(), "crawler-output");
@@ -407,6 +498,17 @@ export async function crawlSite(
 
     LoggerService.info("Crawling completed", { pagesCount: visited.size, outputFile });
 
+    currentProgress = {
+      status: 'completed',
+      pagesVisited: visited.size,
+      pagesInQueue: 0,
+      totalPages: maxPages,
+      currentUrl: null,
+      endTime: Date.now(),
+      startTime: currentProgress.startTime,
+      error: null,
+    };
+
     return {
       success: true,
       message: "Crawling completed politely 🐢",
@@ -415,6 +517,14 @@ export async function crawlSite(
     };
   } catch (err: any) {
     LoggerService.logError(err as Error, "crawlSite", { startUrl, pagesVisited: visited.size });
+    
+    currentProgress = {
+      ...currentProgress,
+      status: 'error',
+      error: err.message ?? "Crawler failed",
+      endTime: Date.now(),
+    };
+
     return {
       success: false,
       message: err.message ?? "Crawler failed",

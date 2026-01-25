@@ -9,6 +9,8 @@ __pycache__/
 .DS_Store
 .env.local
 
+app/crawler-output/*
+
 # awawa
 app/logs/
 *.log

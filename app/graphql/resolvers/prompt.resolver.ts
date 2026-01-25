@@ -5,7 +5,13 @@ import { AddPromptArgs, AddPromptFeedbackArgs } from "../../types";
 export const promptResolvers = {
     Query: {
         prompts: async () => {
-            return prismaService.findAllPrompts();
+            try {
+                const prompts = await prismaService.findAllPrompts();
+                return prompts || [];
+            } catch (error) {
+                console.error("Error fetching prompts:", error);
+                return [];
+            }
         },
     },
     Mutation: {

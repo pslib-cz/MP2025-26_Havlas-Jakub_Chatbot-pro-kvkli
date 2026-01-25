@@ -18,10 +18,22 @@ export const typeDefs = gql`
     conversation: Conversation
   }
 
+  type CrawlProgress {
+    status: String!
+    pagesVisited: Int!
+    pagesInQueue: Int!
+    totalPages: Int!
+    currentUrl: String
+    startTime: Float
+    endTime: Float
+    error: String
+  }
+
   type Query {
     conversations: [Conversation!]!
     conversation(id: ID!): Conversation
     prompts: [Prompt!]!
+    crawlProgress: CrawlProgress!
   }
 
   type Mutation {
@@ -38,6 +50,7 @@ export const typeDefs = gql`
     ): Conversation!
     deletePrompt(id: ID!): Int!
     crawlWebsite(url: String): CrawlResponse!
+    stopCrawl: Boolean!
   }
 
   type CrawlResponse {

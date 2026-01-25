@@ -1,6 +1,7 @@
 "use client";
 import { gql } from "@apollo/client";
-import {  useMutation } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
+import { useEffect, useState } from "react";
 
 interface CrawlWebsiteResponse {
   crawlWebsite: {
@@ -8,6 +9,19 @@ interface CrawlWebsiteResponse {
     message: string;
     pagesCount: number;
     outputFile: string;
+  };
+}
+
+interface CrawlProgressResponse {
+  crawlProgress: {
+    status: string;
+    pagesVisited: number;
+    pagesInQueue: number;
+    totalPages: number;
+    currentUrl: string | null;
+    startTime: number | null;
+    endTime: number | null;
+    error: string | null;
   };
 }
 
@@ -22,35 +36,174 @@ const CRAWL_WEBSITE = gql`
   }
 `;
 
+const GET_CRAWL_PROGRESS = gql`
+  query GetCrawlProgress {
+    crawlProgress {
+      status
+      pagesVisited
+      pagesInQueue
+      totalPages
+      currentUrl
+      startTime
+      endTime
+      error
+    }
+  }
+`;
+
+const STOP_CRAWL = gql`
+  mutation StopCrawl {
+    stopCrawl
+  }
+`;
+
 function CrawlPanel(): React.ReactElement {
   const [crawlWebsite, { data, loading, error }] = useMutation<CrawlWebsiteResponse>(CRAWL_WEBSITE);
+  const [stopCrawlMutation] = useMutation(STOP_CRAWL);
+  const [isMonitoring, setIsMonitoring] = useState(false);
+  
+  const { data: progressData, startPolling, stopPolling } = useQuery<CrawlProgressResponse>(GET_CRAWL_PROGRESS, {
+    skip: !isMonitoring,
+    pollInterval: isMonitoring ? 2000 : undefined,
+    fetchPolicy: 'network-only', // Always fetch fresh data
+  });
 
-  const handleCrawl = () => {
-    crawlWebsite({
-      variables: { url: "https://www.kvkli.cz" }
-    });
+  const progress = progressData?.crawlProgress;
+
+  useEffect(() => {
+    if (progress?.status === 'completed' || progress?.status === 'error') {
+      stopPolling();
+      setIsMonitoring(false);
+    }
+  }, [progress?.status, stopPolling]);
+
+  const handleCrawl = async () => {
+    try {
+      await crawlWebsite({
+        variables: { url: "https://www.kvkli.cz" }
+      });
+      // Only start monitoring after mutation succeeds
+      setIsMonitoring(true);
+      startPolling(2000);
+    } catch (err) {
+      console.error("Failed to start crawl:", err);
+    }
   };
 
-  return (
-    <div className="p-4">
-      <button
-        disabled={loading}
-        onClick={handleCrawl}
-        className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-400"
-      >
-        {loading ? "Crawling..." : "Run Crawl"}
-      </button>
+  const handleStop = async () => {
+    await stopCrawlMutation();
+    stopPolling();
+    setIsMonitoring(false);
+  };
 
-      {error && (
-        <div className="mt-4 p-4 bg-red-100 text-red-700 rounded">
-          Error: {error.message}
+  const percentage = progress ? Math.round((progress.pagesVisited / progress.totalPages) * 100) : 0;
+  const isRunning = progress?.status === 'running';
+
+  return (
+    <div className="p-6 max-w-3xl">
+      <div className="flex gap-3">
+        <button
+          disabled={loading || isRunning}
+          onClick={handleCrawl}
+          className="px-6 py-3 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors font-medium"
+        >
+          {isRunning ? "Crawling..." : "Start Crawl"}
+        </button>
+
+        {isRunning && (
+          <button
+            onClick={handleStop}
+            className="px-6 py-3 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors font-medium"
+          >
+            Stop & Discard
+          </button>
+        )}
+      </div>
+
+      {isRunning && progress && (
+        <div className="mt-6 p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-lg font-semibold text-blue-900 dark:text-blue-100">
+              Progress: {percentage}%
+            </span>
+            <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+              {progress.pagesVisited} / {progress.totalPages} pages
+            </span>
+          </div>
+          
+          <div className="w-full bg-blue-200 dark:bg-blue-950 rounded-full h-6 mb-4 overflow-hidden">
+            <div 
+              className="bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-400 dark:to-blue-500 h-6 rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
+              style={{ width: `${percentage}%` }}
+            >
+              {percentage > 10 && (
+                <span className="text-xs font-bold text-white drop-shadow">
+                  {percentage}%
+                </span>
+              )}
+            </div>
+          </div>
+          
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-700 dark:text-gray-300 font-medium">Queue:</span>
+              <span className="text-gray-900 dark:text-gray-100">{progress.pagesInQueue} pages</span>
+            </div>
+            
+            {progress.currentUrl && (
+              <div className="flex flex-col gap-1">
+                <span className="text-gray-700 dark:text-gray-300 font-medium">Current URL:</span>
+                <span className="text-gray-600 dark:text-gray-400 truncate text-xs bg-white dark:bg-gray-800 px-2 py-1 rounded">
+                  {progress.currentUrl}
+                </span>
+              </div>
+            )}
+            
+            {progress.startTime && (
+              <div className="flex justify-between">
+                <span className="text-gray-700 dark:text-gray-300 font-medium">Elapsed:</span>
+                <span className="text-gray-900 dark:text-gray-100 font-mono">
+                  {Math.floor((Date.now() - progress.startTime) / 60000)}m {Math.floor(((Date.now() - progress.startTime) % 60000) / 1000)}s
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {data?.crawlWebsite && (
-        <div className="mt-4 p-4 bg-green-100 rounded">
-          <h3 className="font-bold">Crawl Results:</h3>
-          <pre className="mt-2">{JSON.stringify(data.crawlWebsite, null, 2)}</pre>
+      {progress?.status === 'completed' && (
+        <div className="mt-6 p-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+          <h3 className="text-xl font-bold text-green-800 dark:text-green-200 flex items-center gap-2">
+            <span className="text-2xl">✓</span> Crawl Completed!
+          </h3>
+          <div className="mt-3 space-y-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-green-700 dark:text-green-300 font-medium">Pages crawled:</span>
+              <span className="text-green-900 dark:text-green-100 font-semibold">{progress.pagesVisited}</span>
+            </div>
+            {progress.startTime && progress.endTime && (
+              <div className="flex justify-between">
+                <span className="text-green-700 dark:text-green-300 font-medium">Duration:</span>
+                <span className="text-green-900 dark:text-green-100 font-mono">
+                  {Math.floor((progress.endTime - progress.startTime) / 60000)}m {Math.floor(((progress.endTime - progress.startTime) % 60000) / 1000)}s
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(error || progress?.error) && (
+        <div className="mt-6 p-6 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+          <h3 className="text-lg font-bold text-red-800 dark:text-red-200 mb-2">Error</h3>
+          <p className="text-red-700 dark:text-red-300">{error?.message || progress?.error}</p>
+        </div>
+      )}
+
+      {data?.crawlWebsite && !isRunning && (
+        <div className="mt-6 p-6 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">Response:</h3>
+          <p className="text-gray-700 dark:text-gray-300">{data.crawlWebsite.message}</p>
         </div>
       )}
     </div>
