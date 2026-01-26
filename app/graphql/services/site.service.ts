@@ -46,7 +46,6 @@ async function getCollection() {
         name: COLLECTION_NAME,
         metadata: { 
           description: "KVKLI website content chunks",
-          "hnsw:space": "cosine"
         },
       });
     } catch (error) {
@@ -95,7 +94,9 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 export async function fetchExistingChunks(): Promise<Chunk[]> {
   try {
     const collection = await getCollection();
-    const results = await collection.get();
+    const results = await collection.get({
+      include: ["metadatas", "documents"]
+    });
 
     if (!results.ids || results.ids.length === 0) {
       return [];
@@ -257,6 +258,7 @@ export async function searchSimilarContent(
     const results = await collection.query({
       queryEmbeddings: [queryEmbedding],
       nResults: limit,
+      include: ["metadatas", "documents", "distances"]
     });
 
     const matches: Array<{ text: string; url: string; section: string; score: number }> = [];
