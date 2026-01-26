@@ -32,7 +32,7 @@ services:
             - app-network
 
     chromadb:
-        image: chromadb/chroma:latest
+        image: chromadb/chroma:0.4.24
         container_name: chromadb
         restart: always
         volumes:
@@ -44,11 +44,6 @@ services:
             - "8000"
         networks:
             - app-network
-        healthcheck:
-            test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
-            interval: 10s
-            timeout: 5s
-            retries: 5
 
     nginx:
         image: nginx:stable
