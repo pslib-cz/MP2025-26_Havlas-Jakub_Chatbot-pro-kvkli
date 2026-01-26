@@ -5,7 +5,7 @@ import { searchSimilarContent } from "./site.service";
 import LoggerService from "./logger.service";
 
 export const aiService = {
-    async generateWithFaq({ promptText }: { promptText: string }) {
+    async generateAnswer({ promptText }: { promptText: string }) {
         try {
             let similarContent: Awaited<ReturnType<typeof searchSimilarContent>> = [];
             
@@ -111,7 +111,7 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
             }
 
             // Return direct response from AI with sources
-            let answer = message.content ?? "Omlouám se, ale nemohu odpovědět na váš dotaz.";
+            let answer = message.content ?? "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
 
             // If AI didn't include links and we have similar content, append them
             if (similarContent.length > 0 && !answer.includes('http')) {
