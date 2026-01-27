@@ -7,20 +7,26 @@ import LoggerService from "./logger.service";
 export const aiService = {
     async generateAnswer({ promptText }: { promptText: string }) {
         try {
-            let similarContent: Awaited<ReturnType<typeof searchSimilarContent>> = [];
-            
+            let similarContent: Awaited<
+                ReturnType<typeof searchSimilarContent>
+            > = [];
+
             try {
                 similarContent = await searchSimilarContent(promptText, 5);
             } catch (searchError) {
-                LoggerService.warn("Failed to search similar content, continuing without context", { 
-                    error: (searchError as Error).message 
-                });
+                LoggerService.warn(
+                    "Failed to search similar content, continuing without context",
+                    {
+                        error: (searchError as Error).message,
+                    },
+                );
             }
 
             const contextText = similarContent.length
                 ? similarContent
                       .map(
-                          (item, idx) => `[Zdroj ${idx + 1}: ${item.section}]\nURL: ${item.url}\n${item.text}`,
+                          (item, idx) =>
+                              `[Zdroj ${idx + 1}: ${item.section}]\nURL: ${item.url}\n${item.text}`,
                       )
                       .join("\n\n")
                 : "Žádný relevantní obsah nebyl nalezen.";
@@ -69,9 +75,10 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                     parameters: {
                         type: "object",
                         properties: {
-                            plotDescription: { 
+                            plotDescription: {
                                 type: "string",
-                                description: "Description of the book's plot or story"
+                                description:
+                                    "Description of the book's plot or story",
                             },
                         },
                         required: ["plotDescription"],
@@ -96,51 +103,69 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                 const books = await vectorService.searchBooks(query);
 
                 return books.length
-                    ? books.map((b) => `📘 ${b.title} — ${b.author}`).join("\n\n")
+                    ? books
+                          .map((b) => `📘 ${b.title} — ${b.author}`)
+                          .join("\n\n")
                     : "Nenašel jsem žádné knihy odpovídající vašemu dotazu.";
             }
 
             if (message.function_call?.name === "findBookByPlot") {
-                const { plotDescription } = JSON.parse(message.function_call.arguments);
-                LoggerService.logAIFunctionCall("findBookByPlot", { plotDescription });
+                const { plotDescription } = JSON.parse(
+                    message.function_call.arguments,
+                );
+                LoggerService.logAIFunctionCall("findBookByPlot", {
+                    plotDescription,
+                });
                 const books = await vectorService.searchBooks(plotDescription);
 
                 return books.length
-                    ? books.map((b) => `📘 ${b.title} — ${b.author}`).join("\n\n")
+                    ? books
+                          .map((b) => `📘 ${b.title} — ${b.author}`)
+                          .join("\n\n")
                     : "Nenašel jsem žádné knihy odpovídající vašemu popisu.";
             }
 
             // Return direct response from AI with sources
-            let answer = message.content ?? "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
+            let answer =
+                message.content ??
+                "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
 
             // If AI didn't include links and we have similar content, append them
-            if (similarContent.length > 0 && !answer.includes('http')) {
-                const uniqueUrls = new Map<string, { section: string; url: string }>();
-                
-                similarContent.forEach(item => {
+            if (similarContent.length > 0 && !answer.includes("http")) {
+                const uniqueUrls = new Map<
+                    string,
+                    { section: string; url: string }
+                >();
+
+                similarContent.forEach((item) => {
                     if (!uniqueUrls.has(item.url)) {
-                        uniqueUrls.set(item.url, { section: item.section, url: item.url });
+                        uniqueUrls.set(item.url, {
+                            section: item.section,
+                            url: item.url,
+                        });
                     }
                 });
-                
+
                 const links = Array.from(uniqueUrls.values())
                     .slice(0, 3) // Max 3 links
-                    .map(item => `[${item.section}](${item.url})`)
-                    .join('\n');
-                
+                    .map((item) => `[${item.section}](${item.url})`)
+                    .join("\n");
+
                 answer += `\n\n📎 Více informací:\n${links}`;
             }
 
-            LoggerService.info("AI response generated", { 
-                promptText, 
+            LoggerService.info("AI response generated", {
+                promptText,
                 hasContent: !!message.content,
                 hasFunctionCall: !!message.function_call,
-                sourcesCount: similarContent.length
+                sourcesCount: similarContent.length,
             });
 
             return answer;
         } catch (error) {
-            LoggerService.logError(error as Error, "generateWithFaq", { promptText });
+            LoggerService.logError(error as Error, "generateAnswer", {
+                promptText,
+            });
             return "Omlouám se, došlo k chybě při zpracování vašeho dotazu.";
         }
     },

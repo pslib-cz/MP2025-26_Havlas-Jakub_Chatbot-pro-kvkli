@@ -21,7 +21,7 @@ export const promptService = {
                 convoId = newConvo.conversationId;
             }
 
-            const answer = await aiService.generateWithFaq({ promptText });
+            const answer = await aiService.generateAnswer({ promptText });
 
             const prompt = await prisma.prompt.create({
                 data: {
@@ -31,11 +31,17 @@ export const promptService = {
                 },
             });
 
-            LoggerService.info("Prompt created", { conversationId: convoId, promptId: prompt.promptId });
+            LoggerService.info("Prompt created", {
+                conversationId: convoId,
+                promptId: prompt.promptId,
+            });
 
             return { conversationId: convoId, prompt };
         } catch (error) {
-            LoggerService.logError(error as Error, "addPrompt", { promptText, conversationId });
+            LoggerService.logError(error as Error, "addPrompt", {
+                promptText,
+                conversationId,
+            });
             throw error;
         }
     },
@@ -53,7 +59,10 @@ export const promptService = {
 
             const target = prompts[promptNth];
             if (!target) {
-                LoggerService.warn("Prompt not found for feedback", { conversationId, promptNth });
+                LoggerService.warn("Prompt not found for feedback", {
+                    conversationId,
+                    promptNth,
+                });
                 throw new Error("Prompt not found.");
             }
 
@@ -62,11 +71,18 @@ export const promptService = {
                 data: { userFeedback },
             });
 
-            LoggerService.info("Prompt feedback added", { promptId: target.promptId, userFeedback });
+            LoggerService.info("Prompt feedback added", {
+                promptId: target.promptId,
+                userFeedback,
+            });
 
             return updated;
         } catch (error) {
-            LoggerService.logError(error as Error, "addPromptFeedback", { conversationId, promptNth, userFeedback });
+            LoggerService.logError(error as Error, "addPromptFeedback", {
+                conversationId,
+                promptNth,
+                userFeedback,
+            });
             throw error;
         }
     },
