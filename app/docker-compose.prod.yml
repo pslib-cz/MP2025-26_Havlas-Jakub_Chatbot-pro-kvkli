@@ -42,7 +42,7 @@ services:
             - app-network
 
     chromadb:
-        image: chromadb/chroma:latest
+        image: chromadb/chroma:0.4.24
         container_name: chromadb
         restart: always
         volumes:

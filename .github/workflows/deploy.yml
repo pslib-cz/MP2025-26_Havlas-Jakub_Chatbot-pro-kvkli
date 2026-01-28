@@ -121,4 +121,8 @@ jobs:
                       
                       # Run Prisma migrations
                       docker compose -f docker-compose.prod.yml exec -T app npx prisma migrate deploy
+                      
+                      # Run integration tests to verify ChromaDB connectivity
+                      echo "Running integration tests..."
+                      docker compose -f docker-compose.prod.yml exec -T app npm run test:integration || echo "⚠️  Integration tests failed, but deployment continues"
                   EOF
