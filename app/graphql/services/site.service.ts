@@ -39,8 +39,10 @@ async function retryOperation<T>(
 async function getCollection() {
   return retryOperation(async () => {
     try {
-      // Verify connection first
-      await chroma.heartbeat();
+      // The ChromaDB client handles API versioning internally
+      // Just verify the connection is working
+      const version = await chroma.version();
+      console.log(`ChromaDB version: ${version}`);
       
       return await chroma.getOrCreateCollection({
         name: COLLECTION_NAME,

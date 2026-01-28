@@ -56,7 +56,7 @@ services:
             test:
                 [
                     "CMD-SHELL",
-                    "timeout 1 bash -c '</dev/tcp/localhost/8000' || exit 1",
+                    "python3 -c 'import http.client; conn = http.client.HTTPConnection(\"localhost\", 8000); conn.request(\"GET\", \"/api/v1\"); r = conn.getresponse(); exit(0 if r.status == 200 else 1)'",
                 ]
             interval: 10s
             timeout: 5s
