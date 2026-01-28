@@ -82,22 +82,34 @@ jobs:
                       
                       # Wait for services to be healthy with detailed logging
                       echo "Waiting for services to be healthy..."
-                      for i in {1..30}; do
-                        echo "Check $i/30..."
+                      for i in {1..60}; do
+                        echo "Check $i/60..."
                         docker compose -f docker-compose.prod.yml ps
                         
-                        # Check if chromadb is unhealthy and show logs
-                        if docker compose -f docker-compose.prod.yml ps | grep -q "chromadb.*unhealthy"; then
+                        # Check ChromaDB health specifically
+                        CHROMA_STATUS=$(docker inspect chromadb --format='{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+                        echo "ChromaDB health status: $CHROMA_STATUS"
+                        
+                        if [ "$CHROMA_STATUS" = "unhealthy" ]; then
                           echo "⚠️  ChromaDB is unhealthy, showing logs:"
-                          docker logs chromadb --tail 50
+                          docker logs chromadb --tail 100
+                          echo ""
+                          echo "Last health check output:"
+                          docker inspect chromadb --format='{{range .State.Health.Log}}{{.Output}}{{end}}' | tail -20
                         fi
                         
                         # Check if all required services are healthy
-                        if docker compose -f docker-compose.prod.yml ps | grep -E "(chromadb|postgres)" | grep -q "healthy"; then
-                          if [ $(docker compose -f docker-compose.prod.yml ps | grep -E "(chromadb|postgres)" | grep -c "healthy") -eq 2 ]; then
-                            echo "✓ All services healthy"
-                            break
-                          fi
+                        HEALTHY_COUNT=$(docker compose -f docker-compose.prod.yml ps | grep -E "(chromadb|postgres)" | grep -c "healthy" || echo "0")
+                        if [ "$HEALTHY_COUNT" -eq 2 ]; then
+                          echo "✓ All services healthy"
+                          break
+                        fi
+                        
+                        if [ $i -eq 60 ]; then
+                          echo "❌ Timeout waiting for services to be healthy"
+                          docker logs chromadb --tail 200
+                          docker logs postgres --tail 100
+                          exit 1
                         fi
                         
                         sleep 2
@@ -106,14 +118,6 @@ jobs:
                       # Final status check
                       echo "Final service status:"
                       docker compose -f docker-compose.prod.yml ps
-                      
-                      # Show logs if any service failed
-                      if docker compose -f docker-compose.prod.yml ps | grep -q "unhealthy"; then
-                        echo "❌ Unhealthy services detected:"
-                        docker logs chromadb --tail 100
-                        docker logs postgres --tail 50
-                        exit 1
-                      fi
                       
                       # Run Prisma migrations
                       docker compose -f docker-compose.prod.yml exec -T app npx prisma migrate deploy
