@@ -21,7 +21,16 @@ export const aiService = {
                     },
                 );
             }
-
+            
+            // Fixed logging - was showing [object Object]
+            console.log(`Found ${similarContent.length} similar content matches`);
+            console.log('Matches:', JSON.stringify(similarContent.map(m => ({ 
+                section: m.section, 
+                url: m.url, 
+                score: m.score,
+                textPreview: m.text.substring(0, 100) + '...'
+            })), null, 2));
+            
             const contextText = similarContent.length
                 ? similarContent
                       .map(
@@ -46,7 +55,7 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                 },
                 {
                     role: "system",
-                    content: `Následující informace jsou z webových stránek knihovny:\n\n${contextText}\n\nPoužij tyto informace k odpovědi na otázku uživatele a VŽDY přidej odkazy na relevantní stránky.`,
+                    content: `Následující informace jsou z webových stránek knihovny a JSOU RELEVANTNÍ pro odpověď:\n\n${contextText}\n\nPoužij PŘESNĚ tyto informace k odpovědi na otázku uživatele. Pokud informace obsahují data, termíny nebo události, VŽDY je zahrň do odpovědi. Přidej odkazy na relevantní stránky.`,
                 },
                 { role: "user", content: promptText },
             ];

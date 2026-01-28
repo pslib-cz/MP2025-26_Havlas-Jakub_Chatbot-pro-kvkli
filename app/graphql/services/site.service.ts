@@ -39,10 +39,8 @@ async function retryOperation<T>(
 async function getCollection() {
   return retryOperation(async () => {
     try {
-      // The ChromaDB client handles API versioning internally
-      // Just verify the connection is working
-      const version = await chroma.version();
-      console.log(`ChromaDB version: ${version}`);
+      // Verify connection first
+      await chroma.heartbeat();
       
       return await chroma.getOrCreateCollection({
         name: COLLECTION_NAME,
@@ -247,22 +245,30 @@ export async function searchSimilarContent(
 ): Promise<Array<{ text: string; url: string; section: string; score: number }>> {
   try {
     const collection = await getCollection();
-
-    // Generate embedding for query
+    
+    const count = await collection.count();
+    console.log(`Collection "${collection.name}" has ${count} documents`);
+    
+    if (count === 0) {
+      LoggerService.warn("ChromaDB collection is empty - no data to search");
+      return [];
+    }
+    
+    console.log(`Searching for similar content to query: "${query}" with limit ${limit}`);
+    
     const response = await openai.embeddings.create({
       model: EMBEDDING_MODEL,
       input: query,
       dimensions: 1536,
     });
     const queryEmbedding = response.data[0].embedding;
-
-    // Search in Chroma
+    
     const results = await collection.query({
       queryEmbeddings: [queryEmbedding],
       nResults: limit,
       include: ["metadatas", "documents", "distances"]
     });
-
+    
     const matches: Array<{ text: string; url: string; section: string; score: number }> = [];
 
     if (results.ids && results.ids[0]) {
@@ -276,17 +282,16 @@ export async function searchSimilarContent(
             text: document,
             url: metadata.url as string,
             section: metadata.section_heading as string,
-            score: distance ? 1 - distance : 0, // Convert distance to similarity score
+            score: distance ? 1 - distance : 0,
           });
         }
       }
-    } 
+    }
     
     LoggerService.info("Site search executed", { query, resultsCount: matches.length, matches });
     return matches;
   } catch (error) {
     LoggerService.logError(error as Error, "searchSimilarContent", { query, limit });
-    // Return empty array instead of crashing when ChromaDB is down
     LoggerService.warn("Returning empty results due to ChromaDB error");
     return [];
   }

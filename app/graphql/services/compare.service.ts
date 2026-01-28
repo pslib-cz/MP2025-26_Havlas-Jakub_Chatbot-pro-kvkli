@@ -17,6 +17,36 @@ export interface ChunkDiff {
 }
 
 /**
+ * Check if a chunk contains meaningful, indexable content
+ */
+function isValidChunk(chunk: Chunk): boolean {
+  const text = chunk.text.toLowerCase();
+  
+  // Skip if too short
+  if (chunk.text.length < 100) return false;
+  
+  // Skip navigation-only content
+  const navigationPatterns = [
+    /^(menu|navigace|breadcrumb)/i,
+    /^(přejít na|skip to|go to)/i,
+    /^(zobrazit|show|hide|skrýt)/i,
+  ];
+  
+  if (navigationPatterns.some(pattern => pattern.test(chunk.text))) {
+    return false;
+  }
+  
+  // Skip cookie notices and similar boilerplate
+  const boilerplateKeywords = ['cookies', 'gdpr', 'ochrana osobních údajů'];
+  const hasBoilerplate = boilerplateKeywords.every(keyword => text.includes(keyword));
+  if (hasBoilerplate && chunk.text.length < 500) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Flatten structured pages into chunks (200-500 tokens approx)
  * Each section's content is split into smaller chunks for better embedding
  */
@@ -41,14 +71,19 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
       // If section is small enough, keep as single chunk
       if (content.length <= MAX_CHUNK_CHARS) {
         const text = `${section.heading}\n\n${content}`;
-        chunks.push({
+        const chunk: Chunk = {
           url: page.url,
           section_heading: section.heading,
           chunk_index: 0,
           text,
           hash: computeChunkHash(text),
           last_crawled: timestamp,
-        });
+        };
+        
+        // Only add if valid
+        if (isValidChunk(chunk)) {
+          chunks.push(chunk);
+        }
       } else {
         // Split large sections into multiple chunks
         const sentences = content.match(/[^.!?]+[.!?]+/g) || [content];
@@ -60,15 +95,19 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
           
           // If adding this sentence exceeds max, save current chunk
           if (currentChunk.length + sentence.length > MAX_CHUNK_CHARS && currentChunk.length > MIN_CHUNK_CHARS) {
-            chunks.push({
+            const chunk: Chunk = {
               url: page.url,
               section_heading: section.heading,
               chunk_index: chunkIndex++,
               text: currentChunk.trim(),
               hash: computeChunkHash(currentChunk.trim()),
               last_crawled: timestamp,
-            });
-            // Start new chunk with heading
+            };
+            
+            if (isValidChunk(chunk)) {
+              chunks.push(chunk);
+            }
+            
             currentChunk = `${section.heading} (cont.)\n\n${sentence} `;
           } else {
             currentChunk += sentence + " ";
@@ -77,19 +116,24 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
 
         // Don't forget the last chunk
         if (currentChunk.trim().length > section.heading.length + 10) {
-          chunks.push({
+          const chunk: Chunk = {
             url: page.url,
             section_heading: section.heading,
             chunk_index: chunkIndex,
             text: currentChunk.trim(),
             hash: computeChunkHash(currentChunk.trim()),
             last_crawled: timestamp,
-          });
+          };
+          
+          if (isValidChunk(chunk)) {
+            chunks.push(chunk);
+          }
         }
       }
     }
   }
 
+  console.log(`Created ${chunks.length} valid chunks from ${pages.length} pages`);
   return chunks;
 }
 

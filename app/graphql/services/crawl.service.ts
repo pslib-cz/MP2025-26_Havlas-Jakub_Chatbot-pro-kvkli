@@ -144,14 +144,25 @@ function extractStructuredSections(mainContent: HTMLElement): ContentSection[] {
   // Helper to normalize and clean text
   const cleanText = (text: string): string => {
     return text
-      .replace(/\s+/g, " ") // normalize whitespace
-      .replace(/\n+/g, " ") // remove line breaks
+      .replace(/\s+/g, " ")
+      .replace(/\n+/g, " ")
       .trim();
   };
 
   // Helper to check if text content is meaningful
   const isMeaningful = (text: string): boolean => {
-    return text.length > 20; // ignore very short snippets
+    // More strict filtering
+    if (text.length < 50) return false; // Increased from 20
+    
+    // Skip common navigation/boilerplate text
+    const boilerplatePatterns = [
+      /^(menu|navigation|sidebar|footer|header)/i,
+      /^(přihlásit|odhlásit|login|logout)/i,
+      /^(sdílet|share|print|tisk)/i,
+      /^(cookies|soubory cookie)/i,
+    ];
+    
+    return !boilerplatePatterns.some(pattern => pattern.test(text));
   };
 
   // Collect text from a node, excluding nested headings
@@ -265,10 +276,60 @@ function extractDynamicLinks(root: HTMLElement, baseUrl: string): string[] {
 }
 
 /**
+ * Check if URL should be crawled based on content relevance
+ */
+function isRelevantUrl(url: string): boolean {
+  const urlLower = url.toLowerCase();
+  
+  // Skip irrelevant sections
+  const irrelevantPatterns = [
+    '/rss/',
+    '/feed/',
+    '/print/',
+    '/export/',
+    '/search/',
+    '/login',
+    '/logout',
+    '/admin',
+    '/api/',
+    '?print=',
+    '?share=',
+    '/galerie/', // Skip photo galleries if not useful
+    '/fotogalerie/',
+  ];
+  
+  if (irrelevantPatterns.some(pattern => urlLower.includes(pattern))) {
+    return false;
+  }
+  
+  // Prioritize important sections
+  const importantPatterns = [
+    '/sluzby/',      // Services
+    '/akce/',        // Events
+    '/o-knihovne/',  // About
+    '/kontakty/',    // Contact
+    '/katalog/',     // Catalog
+    '/vzdelavani/',  // Education
+  ];
+  
+  // If URL contains important patterns, keep it
+  // Otherwise, check if it's the homepage or a top-level page
+  const hasImportantContent = importantPatterns.some(pattern => urlLower.includes(pattern));
+  const isTopLevel = url.split('/').length <= 4; // e.g., https://kvkli.cz/page
+  
+  return hasImportantContent || isTopLevel;
+}
+
+/**
  * Check if URL points to a binary/non-HTML resource
  */
 function shouldSkipUrl(url: string): boolean {
   const urlLower = url.toLowerCase();
+  
+  // Check if not relevant first
+  if (!isRelevantUrl(url)) {
+    return true;
+  }
   
   // Skip file downloads
   if (urlLower.includes('/getfile/')) return true;
