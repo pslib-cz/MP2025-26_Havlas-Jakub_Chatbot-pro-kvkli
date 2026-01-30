@@ -15,9 +15,13 @@ interface CrawlWebsiteResponse {
 interface CrawlProgressResponse {
   crawlProgress: {
     status: string;
+    phase: string;
     pagesVisited: number;
     pagesInQueue: number;
     totalPages: number;
+    chunksCreated: number;
+    chunksToAdd: number;
+    chunksToRemove: number;
     currentUrl: string | null;
     startTime: number | null;
     endTime: number | null;
@@ -40,9 +44,13 @@ const GET_CRAWL_PROGRESS = gql`
   query GetCrawlProgress {
     crawlProgress {
       status
+      phase
       pagesVisited
       pagesInQueue
       totalPages
+      chunksCreated
+      chunksToAdd
+      chunksToRemove
       currentUrl
       startTime
       endTime
@@ -98,6 +106,21 @@ function CrawlPanel(): React.ReactElement {
 
   const percentage = progress ? Math.round((progress.pagesVisited / progress.totalPages) * 100) : 0;
   const isRunning = progress?.status === 'running';
+  
+  // Get phase display info
+  const getPhaseInfo = (phase: string) => {
+    switch (phase) {
+      case 'crawling': return { label: '🕷️ Crawling website', color: 'blue' };
+      case 'chunking': return { label: '📦 Creating chunks', color: 'purple' };
+      case 'diffing': return { label: '🔍 Analyzing changes', color: 'yellow' };
+      case 'updating': return { label: '💾 Updating database', color: 'green' };
+      case 'completed': return { label: '✅ Completed', color: 'green' };
+      case 'error': return { label: '❌ Error', color: 'red' };
+      default: return { label: '⏳ Idle', color: 'gray' };
+    }
+  };
+  
+  const phaseInfo = progress ? getPhaseInfo(progress.phase) : { label: '⏳ Idle', color: 'gray' };
 
   return (
     <div className="p-6 max-w-3xl">
@@ -124,31 +147,64 @@ function CrawlPanel(): React.ReactElement {
         <div className="mt-6 p-6 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <div className="flex justify-between items-center mb-3">
             <span className="text-lg font-semibold text-blue-900 dark:text-blue-100">
-              Progress: {percentage}%
+              {phaseInfo.label}
             </span>
             <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">
-              {progress.pagesVisited} / {progress.totalPages} pages
+              {progress.phase === 'crawling' && `${progress.pagesVisited} / ${progress.totalPages} pages`}
+              {progress.phase === 'chunking' && progress.chunksCreated > 0 && `${progress.chunksCreated} chunks created`}
+              {progress.phase === 'diffing' && 'Analyzing...'}
+              {progress.phase === 'updating' && progress.chunksToAdd > 0 && `Adding ${progress.chunksToAdd} chunks`}
             </span>
           </div>
           
-          <div className="w-full bg-blue-200 dark:bg-blue-950 rounded-full h-6 mb-4 overflow-hidden">
-            <div 
-              className="bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-400 dark:to-blue-500 h-6 rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
-              style={{ width: `${percentage}%` }}
-            >
-              {percentage > 10 && (
-                <span className="text-xs font-bold text-white drop-shadow">
-                  {percentage}%
-                </span>
-              )}
-            </div>
-          </div>
+          {progress.phase === 'crawling' && (
+            <>
+              <div className="w-full bg-blue-200 dark:bg-blue-950 rounded-full h-6 mb-4 overflow-hidden">
+                <div 
+                  className="bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-400 dark:to-blue-500 h-6 rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
+                  style={{ width: `${percentage}%` }}
+                >
+                  {percentage > 10 && (
+                    <span className="text-xs font-bold text-white drop-shadow">
+                      {percentage}%
+                    </span>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
           
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-700 dark:text-gray-300 font-medium">Queue:</span>
-              <span className="text-gray-900 dark:text-gray-100">{progress.pagesInQueue} pages</span>
-            </div>
+            {progress.phase === 'crawling' && (
+              <div className="flex justify-between">
+                <span className="text-gray-700 dark:text-gray-300 font-medium">Queue:</span>
+                <span className="text-gray-900 dark:text-gray-100">{progress.pagesInQueue} pages</span>
+              </div>
+            )}
+            
+            {progress.phase !== 'crawling' && progress.chunksCreated > 0 && (
+              <div className="flex justify-between">
+                <span className="text-gray-700 dark:text-gray-300 font-medium">Total chunks:</span>
+                <span className="text-gray-900 dark:text-gray-100">{progress.chunksCreated}</span>
+              </div>
+            )}
+            
+            {(progress.phase === 'diffing' || progress.phase === 'updating') && (
+              <>
+                {progress.chunksToAdd > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700 dark:text-gray-300 font-medium">To add:</span>
+                    <span className="text-green-600 dark:text-green-400 font-semibold">+{progress.chunksToAdd}</span>
+                  </div>
+                )}
+                {progress.chunksToRemove > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700 dark:text-gray-300 font-medium">To remove:</span>
+                    <span className="text-red-600 dark:text-red-400 font-semibold">-{progress.chunksToRemove}</span>
+                  </div>
+                )}
+              </>
+            )}
             
             {progress.currentUrl && (
               <div className="flex flex-col gap-1">

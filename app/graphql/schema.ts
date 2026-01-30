@@ -20,9 +20,13 @@ export const typeDefs = gql`
 
   type CrawlProgress {
     status: String!
+    phase: String!
     pagesVisited: Int!
     pagesInQueue: Int!
     totalPages: Int!
+    chunksCreated: Int!
+    chunksToAdd: Int!
+    chunksToRemove: Int!
     currentUrl: String
     startTime: Float
     endTime: Float

@@ -21,16 +21,7 @@ export const aiService = {
                     },
                 );
             }
-            
-            // Fixed logging - was showing [object Object]
-            console.log(`Found ${similarContent.length} similar content matches`);
-            console.log('Matches:', JSON.stringify(similarContent.map(m => ({ 
-                section: m.section, 
-                url: m.url, 
-                score: m.score,
-                textPreview: m.text.substring(0, 100) + '...'
-            })), null, 2));
-            
+
             const contextText = similarContent.length
                 ? similarContent
                       .map(
