@@ -2,6 +2,7 @@ import { openai } from "../../lib/openAI";
 import { chroma } from "../../lib/chroma";
 import { Chunk, getChunkId } from "./compare.service";
 import LoggerService from "./logger.service";
+import { updateCrawlProgress } from "./crawl.service";
 
 const COLLECTION_NAME = "kvkli_content";
 const EMBEDDING_MODEL = "text-embedding-3-small";
@@ -76,9 +77,21 @@ async function getCollection() {
 async function generateEmbeddings(texts: string[]): Promise<number[][]> {
     const embeddings: number[][] = [];
 
+    LoggerService.info("🔮 Starting embedding generation", {
+        totalTexts: texts.length,
+        batches: Math.ceil(texts.length / BATCH_SIZE),
+    });
+
     // Process in batches to avoid rate limits
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
         const batch = texts.slice(i, i + BATCH_SIZE);
+        const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(texts.length / BATCH_SIZE);
+
+        LoggerService.info(`Generating embeddings batch ${batchNumber}/${totalBatches}`, {
+            batchSize: batch.length,
+            progress: `${i + batch.length}/${texts.length}`,
+        });
 
         try {
             const response = await openai.embeddings.create({
@@ -91,13 +104,28 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
                 (item: { embedding: number[] }) => item.embedding,
             );
             embeddings.push(...batchEmbeddings);
+
+            // Update progress
+            updateCrawlProgress({
+                embeddingsGenerated: embeddings.length,
+                embeddingsTotal: texts.length,
+            });
+
+            LoggerService.info(`✓ Batch ${batchNumber}/${totalBatches} completed`, {
+                embeddingsGenerated: embeddings.length,
+            });
         } catch (error) {
             LoggerService.logError(error as Error, "generateEmbeddings", {
                 batchIndex: i,
+                batchNumber,
             });
             throw error;
         }
     }
+
+    LoggerService.info("✅ All embeddings generated", {
+        total: embeddings.length,
+    });
 
     return embeddings;
 }
@@ -148,7 +176,7 @@ export async function updateVectorDB(
     chunksToRemove: Chunk[],
 ): Promise<{ added: number; removed: number }> {
     try {
-        LoggerService.info("Starting vector DB update", {
+        LoggerService.info("🗄️ Starting vector DB update", {
             chunksToAdd: chunksToAdd.length,
             chunksToRemove: chunksToRemove.length,
         });
@@ -157,18 +185,24 @@ export async function updateVectorDB(
         // Remove deleted chunks
         let removed = 0;
         if (chunksToRemove.length > 0) {
-            LoggerService.info("Removing outdated chunks", {
+            LoggerService.info("🗑️ Removing outdated chunks", {
                 count: chunksToRemove.length,
             });
             const idsToRemove = chunksToRemove.map(getChunkId);
             try {
                 await collection.delete({ ids: idsToRemove });
                 removed = idsToRemove.length;
-                LoggerService.info("Successfully removed chunks", {
+                
+                // Update progress
+                updateCrawlProgress({
+                    chunksRemovedFromDB: removed,
+                });
+                
+                LoggerService.info("✓ Successfully removed chunks", {
                     count: removed,
                 });
             } catch (error) {
-                LoggerService.logError(error as Error, "updateVectorDB");
+                LoggerService.logError(error as Error, "updateVectorDB - remove");
                 throw new Error(
                     `Failed to remove chunks: ${error instanceof Error ? error.message : "Unknown error"}`,
                 );
@@ -178,9 +212,16 @@ export async function updateVectorDB(
         // Add new/changed chunks
         let added = 0;
         if (chunksToAdd.length > 0) {
-            LoggerService.info("Adding new/updated chunks", {
+            LoggerService.info("➕ Adding new/updated chunks", {
                 count: chunksToAdd.length,
             });
+            
+            // Update total embeddings count
+            updateCrawlProgress({
+                embeddingsTotal: chunksToAdd.length,
+                embeddingsGenerated: 0,
+            });
+            
             const texts = chunksToAdd.map((chunk) => chunk.text);
             const embeddings = await generateEmbeddings(texts);
             const ids = chunksToAdd.map(getChunkId);
@@ -197,6 +238,12 @@ export async function updateVectorDB(
                 const CHROMA_BATCH_SIZE = 100; // Much smaller initial size
                 const totalBatches = Math.ceil(ids.length / CHROMA_BATCH_SIZE);
 
+                LoggerService.info("💾 Adding chunks to ChromaDB", {
+                    totalChunks: ids.length,
+                    batchSize: CHROMA_BATCH_SIZE,
+                    totalBatches,
+                });
+
                 for (let i = 0; i < ids.length; i += CHROMA_BATCH_SIZE) {
                     const batchIds = ids.slice(i, i + CHROMA_BATCH_SIZE);
                     const batchEmbeddings = embeddings.slice(
@@ -210,6 +257,11 @@ export async function updateVectorDB(
                     );
 
                     const currentBatch = Math.floor(i / CHROMA_BATCH_SIZE) + 1;
+
+                    LoggerService.info(`Adding batch ${currentBatch}/${totalBatches} to ChromaDB`, {
+                        chunkCount: batchIds.length,
+                        progress: `${Math.min(i + CHROMA_BATCH_SIZE, ids.length)}/${ids.length}`,
+                    });
 
                     // Retry logic with dynamic batch size reduction
                     let retries = 3;
@@ -243,6 +295,17 @@ export async function updateVectorDB(
                             });
 
                             retryOffset += currentBatchSize;
+                            added += currentBatchSize;
+                            
+                            // Update progress
+                            updateCrawlProgress({
+                                chunksAddedToDB: added,
+                            });
+                            
+                            LoggerService.info(`✓ Batch ${currentBatch} sub-batch added`, {
+                                added: currentBatchSize,
+                                totalAdded: added,
+                            });
                       
                         } catch (batchError: unknown) {
                             const errorMessage =
@@ -254,7 +317,7 @@ export async function updateVectorDB(
                                 errorMessage.includes("413") ||
                                 errorMessage.includes("Payload Too Large")
                             ) {
-                                console.warn(
+                                LoggerService.warn(
                                     `Payload too large, reducing batch size from ${currentBatchSize} to ${Math.floor(currentBatchSize / 2)}`,
                                 );
                                 currentBatchSize = Math.max(
@@ -266,7 +329,7 @@ export async function updateVectorDB(
 
                             retries--;
                             if (retries > 0) {
-                                console.warn(
+                                LoggerService.warn(
                                     `Batch ${currentBatch} failed, retrying... (${retries} attempts left)`,
                                 );
                                 await new Promise((resolve) =>
@@ -280,20 +343,20 @@ export async function updateVectorDB(
                         }
                     }
                 }
-                added = ids.length;
-                LoggerService.info("Successfully added all chunks to DB", {
+                
+                LoggerService.info("✅ Successfully added all chunks to ChromaDB", {
                     count: added,
                 });
                
             } catch (error) {
-                console.error("Error adding chunks:", error);
+                LoggerService.logError(error as Error, "updateVectorDB - add chunks");
                 throw new Error(
                     `Failed to add chunks to vector DB: ${error instanceof Error ? error.message : "Unknown error"}`,
                 );
             }
         }
 
-        LoggerService.info("Vector DB update completed", { added, removed });
+        LoggerService.info("🎉 Vector DB update completed", { added, removed });
         return { added, removed };
     } catch (error) {
         LoggerService.logError(error as Error, "updateVectorDB");

@@ -31,6 +31,10 @@ export const typeDefs = gql`
     startTime: Float
     endTime: Float
     error: String
+    embeddingsGenerated: Int!
+    embeddingsTotal: Int!
+    chunksAddedToDB: Int!
+    chunksRemovedFromDB: Int!
   }
 
   type Query {

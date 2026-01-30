@@ -46,6 +46,10 @@ export interface CrawlProgress {
     startTime: number | null;
     endTime: number | null;
     error: string | null;
+    embeddingsGenerated: number;
+    embeddingsTotal: number;
+    chunksAddedToDB: number;
+    chunksRemovedFromDB: number;
 }
 
 // Global progress tracker
@@ -62,6 +66,10 @@ let currentProgress: CrawlProgress = {
     startTime: null,
     endTime: null,
     error: null,
+    embeddingsGenerated: 0,
+    embeddingsTotal: 0,
+    chunksAddedToDB: 0,
+    chunksRemovedFromDB: 0,
 };
 
 // Stop signal
@@ -82,6 +90,10 @@ export function getCrawlProgress(): CrawlProgress {
         startTime: currentProgress.startTime ?? null,
         endTime: currentProgress.endTime ?? null,
         error: currentProgress.error ?? null,
+        embeddingsGenerated: currentProgress.embeddingsGenerated,
+        embeddingsTotal: currentProgress.embeddingsTotal,
+        chunksAddedToDB: currentProgress.chunksAddedToDB,
+        chunksRemovedFromDB: currentProgress.chunksRemovedFromDB,
     };
 }
 
@@ -516,7 +528,17 @@ export async function crawlSite(
         startTime: Date.now(),
         endTime: null,
         error: null,
+        embeddingsGenerated: 0,
+        embeddingsTotal: 0,
+        chunksAddedToDB: 0,
+        chunksRemovedFromDB: 0,
     };
+
+    LoggerService.info("🕷️ Starting crawl", {
+        startUrl,
+        maxPages,
+        concurrency,
+    });
 
     const visited = new Set<string>();
     const queue: string[] = [startUrl];
@@ -529,6 +551,11 @@ export async function crawlSite(
             // Update progress
             currentProgress.pagesVisited = visited.size;
             currentProgress.pagesInQueue = queue.length;
+
+            LoggerService.info("Crawl progress", {
+                pagesVisited: visited.size,
+                pagesInQueue: queue.length,
+            });
 
             const batch: string[] = [];
 
@@ -625,6 +652,10 @@ export async function crawlSite(
             endTime: Date.now(),
             startTime: currentProgress.startTime,
             error: null,
+            embeddingsGenerated: currentProgress.embeddingsGenerated,
+            embeddingsTotal: currentProgress.embeddingsTotal,
+            chunksAddedToDB: currentProgress.chunksAddedToDB,
+            chunksRemovedFromDB: currentProgress.chunksRemovedFromDB,
         };
 
         return {

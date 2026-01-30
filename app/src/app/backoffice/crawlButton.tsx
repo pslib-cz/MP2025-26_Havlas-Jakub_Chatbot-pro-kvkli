@@ -26,6 +26,10 @@ interface CrawlProgressResponse {
     startTime: number | null;
     endTime: number | null;
     error: string | null;
+    embeddingsGenerated: number;
+    embeddingsTotal: number;
+    chunksAddedToDB: number;
+    chunksRemovedFromDB: number;
   };
 }
 
@@ -55,6 +59,10 @@ const GET_CRAWL_PROGRESS = gql`
       startTime
       endTime
       error
+      embeddingsGenerated
+      embeddingsTotal
+      chunksAddedToDB
+      chunksRemovedFromDB
     }
   }
 `;
@@ -87,14 +95,16 @@ function CrawlPanel(): React.ReactElement {
 
   const handleCrawl = async () => {
     try {
+      console.log("🚀 Starting crawl mutation...");
       await crawlWebsite({
         variables: { url: "https://www.kvkli.cz" }
       });
+      console.log("✅ Crawl mutation initiated");
       // Only start monitoring after mutation succeeds
       setIsMonitoring(true);
       startPolling(2000);
     } catch (err) {
-      console.error("Failed to start crawl:", err);
+      console.error("❌ Failed to start crawl:", err);
     }
   };
 
@@ -105,6 +115,12 @@ function CrawlPanel(): React.ReactElement {
   };
 
   const percentage = progress ? Math.round((progress.pagesVisited / progress.totalPages) * 100) : 0;
+  const embeddingPercentage = progress?.embeddingsTotal > 0 
+    ? Math.round((progress.embeddingsGenerated / progress.embeddingsTotal) * 100) 
+    : 0;
+  const dbPercentage = progress?.chunksToAdd > 0 
+    ? Math.round((progress.chunksAddedToDB / progress.chunksToAdd) * 100) 
+    : 0;
   const isRunning = progress?.status === 'running';
   
   // Get phase display info
@@ -153,7 +169,7 @@ function CrawlPanel(): React.ReactElement {
               {progress.phase === 'crawling' && `${progress.pagesVisited} / ${progress.totalPages} pages`}
               {progress.phase === 'chunking' && progress.chunksCreated > 0 && `${progress.chunksCreated} chunks created`}
               {progress.phase === 'diffing' && 'Analyzing...'}
-              {progress.phase === 'updating' && progress.chunksToAdd > 0 && `Adding ${progress.chunksToAdd} chunks`}
+              {progress.phase === 'updating' && progress.chunksToAdd > 0 && `Processing ${progress.chunksToAdd} chunks`}
             </span>
           </div>
           
@@ -172,6 +188,50 @@ function CrawlPanel(): React.ReactElement {
                 </div>
               </div>
             </>
+          )}
+
+          {progress.phase === 'updating' && progress.embeddingsTotal > 0 && (
+            <div className="space-y-3 mb-4">
+              <div>
+                <div className="flex justify-between mb-1">
+                  <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">🔮 Generating Embeddings</span>
+                  <span className="text-sm text-gray-600 dark:text-gray-400">{progress.embeddingsGenerated} / {progress.embeddingsTotal}</span>
+                </div>
+                <div className="w-full bg-purple-200 dark:bg-purple-950 rounded-full h-5 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-purple-500 to-purple-600 dark:from-purple-400 dark:to-purple-500 h-5 rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
+                    style={{ width: `${embeddingPercentage}%` }}
+                  >
+                    {embeddingPercentage > 10 && (
+                      <span className="text-xs font-bold text-white drop-shadow">
+                        {embeddingPercentage}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {progress.chunksToAdd > 0 && (
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">💾 Adding to ChromaDB</span>
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{progress.chunksAddedToDB} / {progress.chunksToAdd}</span>
+                  </div>
+                  <div className="w-full bg-green-200 dark:bg-green-950 rounded-full h-5 overflow-hidden">
+                    <div 
+                      className="bg-gradient-to-r from-green-500 to-green-600 dark:from-green-400 dark:to-green-500 h-5 rounded-full transition-all duration-500 ease-out flex items-center justify-end pr-2"
+                      style={{ width: `${dbPercentage}%` }}
+                    >
+                      {dbPercentage > 10 && (
+                        <span className="text-xs font-bold text-white drop-shadow">
+                          {dbPercentage}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
           
           <div className="space-y-2 text-sm">
@@ -201,6 +261,12 @@ function CrawlPanel(): React.ReactElement {
                   <div className="flex justify-between">
                     <span className="text-gray-700 dark:text-gray-300 font-medium">To remove:</span>
                     <span className="text-red-600 dark:text-red-400 font-semibold">-{progress.chunksToRemove}</span>
+                  </div>
+                )}
+                {progress.chunksRemovedFromDB > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-700 dark:text-gray-300 font-medium">Removed from DB:</span>
+                    <span className="text-orange-600 dark:text-orange-400 font-semibold">{progress.chunksRemovedFromDB}</span>
                   </div>
                 )}
               </>
@@ -236,6 +302,14 @@ function CrawlPanel(): React.ReactElement {
             <div className="flex justify-between">
               <span className="text-green-700 dark:text-green-300 font-medium">Pages crawled:</span>
               <span className="text-green-900 dark:text-green-100 font-semibold">{progress.pagesVisited}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-green-700 dark:text-green-300 font-medium">Chunks added:</span>
+              <span className="text-green-900 dark:text-green-100 font-semibold">{progress.chunksAddedToDB}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-green-700 dark:text-green-300 font-medium">Chunks removed:</span>
+              <span className="text-green-900 dark:text-green-100 font-semibold">{progress.chunksRemovedFromDB}</span>
             </div>
             {progress.startTime && progress.endTime && (
               <div className="flex justify-between">

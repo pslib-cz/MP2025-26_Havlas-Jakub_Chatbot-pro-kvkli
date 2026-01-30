@@ -24,6 +24,10 @@ export const crawlResolvers = {
                 startTime: null,
                 endTime: null,
                 error: null,
+                embeddingsGenerated: 0,
+                embeddingsTotal: 0,
+                chunksAddedToDB: 0,
+                chunksRemovedFromDB: 0,
             };
 
             try {
@@ -47,6 +51,10 @@ export const crawlResolvers = {
                     startTime: progress.startTime || null,
                     endTime: progress.endTime || null,
                     error: progress.error || null,
+                    embeddingsGenerated: progress.embeddingsGenerated || 0,
+                    embeddingsTotal: progress.embeddingsTotal || 0,
+                    chunksAddedToDB: progress.chunksAddedToDB || 0,
+                    chunksRemovedFromDB: progress.chunksRemovedFromDB || 0,
                 };
             } catch (error) {
                 console.error("Error in crawlProgress resolver:", error);
@@ -67,6 +75,8 @@ export const crawlResolvers = {
 
             (async () => {
                 try {
+                    LoggerService.info("📡 Initiating website crawl...");
+
                     // Step 1: Crawl website and extract structured content
                     const crawlResult = await crawlSite(url);
 
@@ -89,6 +99,7 @@ export const crawlResolvers = {
                     );
 
                     // Step 2: Read the crawled data from the output file
+                    LoggerService.info("📂 Reading crawled data from file...");
                     updateCrawlProgress({
                         phase: "chunking",
                         currentUrl: null,
@@ -99,6 +110,7 @@ export const crawlResolvers = {
                     );
 
                     // Step 3: Flatten pages into chunks
+                    LoggerService.info("📦 Creating chunks from pages...");
                     const newChunks = flattenPagesToChunks(crawledData);
                     LoggerService.info(
                         `📦 Created ${newChunks.length} chunks from crawled pages`,
@@ -106,6 +118,7 @@ export const crawlResolvers = {
                     updateCrawlProgress({ chunksCreated: newChunks.length });
 
                     // Step 4: Fetch existing chunks from vector DB
+                    LoggerService.info("🗄️ Fetching existing chunks from database...");
                     updateCrawlProgress({ phase: "diffing" });
                     const existingChunks = await fetchExistingChunks();
                     LoggerService.info(
@@ -113,6 +126,7 @@ export const crawlResolvers = {
                     );
 
                     // Step 5: Compare and determine what changed
+                    LoggerService.info("🔍 Analyzing differences...");
                     const diff = diffChunks(newChunks, existingChunks);
                     LoggerService.info(`🔍 Diff Analysis:`, {
                         newOrChanged: diff.chunksToAdd.length,
@@ -125,6 +139,7 @@ export const crawlResolvers = {
                     });
 
                     // Step 6: Update vector DB (only embed new/changed chunks)
+                    LoggerService.info("💾 Updating vector database...");
                     updateCrawlProgress({ phase: "updating" });
                     const updateResult = await updateVectorDB(
                         diff.chunksToAdd,
