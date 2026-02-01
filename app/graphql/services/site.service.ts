@@ -364,6 +364,58 @@ export async function updateVectorDB(
     }
 }
 
+/**
+ * Expand colloquial Czech queries to more formal library terms
+ */
+function expandQuery(query: string): string {
+    const queryLower = query.toLowerCase();
+    
+    // Map colloquial terms to formal library terms
+    const expansions: { [key: string]: string[] } = {
+        'výpůjčk': ['půjčování', 'výpůjční služby', 'jak si půjčit knihu', 'výpůjční lhůta'],
+        'půjč': ['půjčování', 'výpůjčky', 'jak si vypůjčit', 'borrowing'],
+        'knihy': ['dokumenty', 'publikace', 'média', 'materiály'],
+        'vrác': ['návrat', 'vrácení dokumentů', 'returning'],
+        'prodlouž': ['prodloužení výpůjčky', 'renewal', 'jak prodloužit'],
+        'registr': ['registrace', 'přihlášení', 'členství', 'čtenářský průkaz'],
+        'plat': ['poplatky', 'ceny', 'ceník služeb', 'fees'],
+        'otevř': ['otevírací doba', 'provozní doba', 'kdy máte otevřeno'],
+    };
+    
+    let expandedQuery = query;
+    
+    for (const [pattern, terms] of Object.entries(expansions)) {
+        if (queryLower.includes(pattern)) {
+            expandedQuery += ' ' + terms.join(' ');
+            break; // Only expand first match to avoid query becoming too long
+        }
+    }
+    
+    return expandedQuery;
+}
+
+/**
+ * Score boost based on URL relevance to query
+ */
+function getUrlRelevanceBoost(url: string, query: string): number {
+    const urlLower = url.toLowerCase();
+    const queryLower = query.toLowerCase();
+    
+    // Boost service-related pages
+    if (urlLower.includes('/sluzby/')) return 0.2;
+    if (urlLower.includes('/pujcovani')) return 0.25;
+    if (urlLower.includes('/vse-o-pujcovani')) return 0.3;
+    if (urlLower.includes('/registrace')) return 0.2;
+    if (urlLower.includes('/kontakt')) return 0.15;
+    
+    // Penalize book recommendations
+    if (urlLower.includes('/knihovnici-doporucuji')) return -0.5;
+    if (urlLower.includes('/tipy-ke-cteni')) return -0.5;
+    if (urlLower.includes('/ctenarska-vyzva')) return -0.5;
+    
+    return 0;
+}
+
 export async function searchSimilarContent(
     query: string,
     limit: number = 5,
@@ -374,7 +426,6 @@ export async function searchSimilarContent(
         const collection = await getCollection();
 
         const count = await collection.count();
-       
 
         if (count === 0) {
             LoggerService.warn(
@@ -383,18 +434,25 @@ export async function searchSimilarContent(
             return [];
         }
 
-     
+        // Expand query with related terms
+        const expandedQuery = expandQuery(query);
+        
+        LoggerService.info("Query expansion", {
+            original: query,
+            expanded: expandedQuery,
+        });
 
         const response = await openai.embeddings.create({
             model: EMBEDDING_MODEL,
-            input: query,
+            input: expandedQuery,
             dimensions: 1536,
         });
         const queryEmbedding = response.data[0].embedding;
 
+        // Get more results for re-ranking
         const results = await collection.query({
             queryEmbeddings: [queryEmbedding],
-            nResults: limit,
+            nResults: limit * 3, // Get 3x more results for filtering
             include: ["metadatas", "documents", "distances"],
         });
 
@@ -412,22 +470,33 @@ export async function searchSimilarContent(
                 const distance = results.distances?.[0]?.[i];
 
                 if (metadata && document) {
+                    const baseScore = distance ? 1 - distance : 0;
+                    const urlBoost = getUrlRelevanceBoost(metadata.url as string, query);
+                    const finalScore = baseScore + urlBoost;
+                    
                     matches.push({
                         text: document,
                         url: metadata.url as string,
                         section: metadata.section_heading as string,
-                        score: distance ? 1 - distance : 0,
+                        score: finalScore,
                     });
                 }
             }
         }
 
+        // Re-rank by adjusted score and take top results
+        const rankedMatches = matches
+            .sort((a, b) => b.score - a.score)
+            .slice(0, limit);
+
         LoggerService.info("Site search executed", {
             query,
-            resultsCount: matches.length,
-            matches,
+            expandedQuery,
+            resultsCount: rankedMatches.length,
+            topUrls: rankedMatches.slice(0, 3).map(m => ({ url: m.url, score: m.score })),
         });
-        return matches;
+        
+        return rankedMatches;
     } catch (error) {
         LoggerService.logError(error as Error, "searchSimilarContent", {
             query,

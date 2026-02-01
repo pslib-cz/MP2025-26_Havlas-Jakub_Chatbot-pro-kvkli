@@ -22,15 +22,42 @@ export interface ChunkDiff {
  */
 function isValidChunk(chunk: Chunk): boolean {
     const text = chunk.text.toLowerCase();
+    const url = chunk.url.toLowerCase();
 
     // Skip if too short
     if (chunk.text.length < 100) return false;
+
+    // Skip book recommendations and reading tips
+    const bookRecommendationPatterns = [
+        /knihovníci doporučují/i,
+        /tipy ke čtení/i,
+        /čtenářská výzva/i,
+        /kniha v našem katalogu/i,
+        /autor:/i,
+        /\d+ stran/,
+        /isbn/i,
+    ];
+
+    // If URL is about book recommendations, skip
+    if (
+        url.includes("/knihovnici-doporucuji") ||
+        url.includes("/tipy-ke-cteni") ||
+        url.includes("/ctenarska-vyzva")
+    ) {
+        return false;
+    }
+
+    // If heading or content suggests book recommendations, skip
+    if (bookRecommendationPatterns.some((pattern) => pattern.test(chunk.text))) {
+        return false;
+    }
 
     // Skip navigation-only content
     const navigationPatterns = [
         /^(menu|navigace|breadcrumb)/i,
         /^(přejít na|skip to|go to)/i,
         /^(zobrazit|show|hide|skrýt)/i,
+        /^kategorie.*odebrat/i,
     ];
 
     if (navigationPatterns.some((pattern) => pattern.test(chunk.text))) {
@@ -46,12 +73,33 @@ function isValidChunk(chunk: Chunk): boolean {
         return false;
     }
 
+    // Prioritize service-related content
+    const serviceKeywords = [
+        "výpůjč",
+        "půjčování",
+        "registrace",
+        "služby",
+        "otevírací doba",
+        "kontakt",
+        "ceník",
+    ];
+
+    const hasServiceContent = serviceKeywords.some((keyword) =>
+        text.includes(keyword),
+    );
+
+    // If it's service content, be more lenient with length
+    if (hasServiceContent && chunk.text.length >= 50) {
+        return true;
+    }
+
     return true;
 }
 
 /**
  * Flatten structured pages into chunks (200-500 tokens approx)
  * Each section's content is split into smaller chunks for better embedding
+ * Now includes URL path in metadata for better filtering
  */
 export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
     LoggerService.info("Starting chunk creation from pages", {
@@ -74,9 +122,12 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
             const content = section.content.trim();
             if (!content) continue;
 
+            // Add page title and URL context to improve relevance
+            const contextPrefix = `Stránka: ${page.title}\nURL: ${page.path}\n\n`;
+
             // If section is small enough, keep as single chunk
             if (content.length <= MAX_CHUNK_CHARS) {
-                const text = `${section.heading}\n\n${content}`;
+                const text = `${contextPrefix}${section.heading}\n\n${content}`;
                 const chunk: Chunk = {
                     url: page.url,
                     section_heading: section.heading,
@@ -93,7 +144,7 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
             } else {
                 // Split large sections into multiple chunks
                 const sentences = content.match(/[^.!?]+[.!?]+/g) || [content];
-                let currentChunk = `${section.heading}\n\n`;
+                let currentChunk = `${contextPrefix}${section.heading}\n\n`;
                 let chunkIndex = 0;
 
                 for (let i = 0; i < sentences.length; i++) {
@@ -118,14 +169,14 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
                             chunks.push(chunk);
                         }
 
-                        currentChunk = `${section.heading} (cont.)\n\n${sentence} `;
+                        currentChunk = `${contextPrefix}${section.heading} (pokračování)\n\n${sentence} `;
                     } else {
                         currentChunk += sentence + " ";
                     }
                 }
 
                 // Don't forget the last chunk
-                if (currentChunk.trim().length > section.heading.length + 10) {
+                if (currentChunk.trim().length > contextPrefix.length + section.heading.length + 10) {
                     const chunk: Chunk = {
                         url: page.url,
                         section_heading: section.heading,

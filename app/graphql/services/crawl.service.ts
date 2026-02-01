@@ -329,6 +329,9 @@ function isRelevantUrl(url: string): boolean {
         "?share=",
         "/galerie/",
         "/fotogalerie/",
+        "/knihovnici-doporucuji", // Skip book recommendations
+        "/tipy-ke-cteni", // Skip reading tips
+        "/ctenarska-vyzva", // Skip reading challenges
     ];
 
     if (irrelevantPatterns.some((pattern) => urlLower.includes(pattern))) {
@@ -337,12 +340,14 @@ function isRelevantUrl(url: string): boolean {
 
     // Prioritize important sections
     const importantPatterns = [
-        "/sluzby/", // Services
-        "/akce/", // Events
+        "/sluzby/", // Services - MOST IMPORTANT
+        "/pujcovani", // Borrowing
+        "/vse-o-pujcovani", // All about borrowing
+        "/kontakt/", // Contact
         "/o-knihovne/", // About
-        "/kontakty/", // Contact
+        "/akce/", // Events
         "/katalog/", // Catalog
-        "/o-nas/", // Education
+        "/vzdelavani/", // Education
     ];
 
     // If URL contains important patterns, keep it
