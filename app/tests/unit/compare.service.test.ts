@@ -85,6 +85,7 @@ describe("compare.service", () => {
       const pages: CrawledPage[] = [
         {
           url: "https://example.com/empty",
+          path: "/empty",
           title: "Empty Page",
           sections: [],
         },
@@ -98,12 +99,13 @@ describe("compare.service", () => {
       const pages: CrawledPage[] = [
         {
           url: "https://example.com/page1",
+          path: "/page1",
           title: "Test Page",
           sections: [
             {
               heading: "Small Section",
               level: 1,
-              content: "This is a small piece of content that fits in one chunk.",
+              content: "This is a small piece of content that fits in one chunk. It needs to be at least 100 characters long to pass validation. This sentence makes it long enough.",
             },
           ],
         },
@@ -130,6 +132,7 @@ describe("compare.service", () => {
       const pages: CrawledPage[] = [
         {
           url: "https://example.com/page2",
+          path: "/page2",
           title: "Long Page",
           sections: [
             {
@@ -168,17 +171,18 @@ describe("compare.service", () => {
       const pages: CrawledPage[] = [
         {
           url: "https://example.com/multi",
+          path: "/multi",
           title: "Multi Section Page",
           sections: [
             {
               heading: "Section 1",
               level: 1,
-              content: "Content of section 1.",
+              content: "Content of section 1. This needs to be longer than 100 characters to pass the validation check. Adding more text here to meet the requirement.",
             },
             {
               heading: "Section 2",
               level: 2,
-              content: "Content of section 2.",
+              content: "Content of section 2. This also needs to be longer than 100 characters to pass validation. More text added to reach minimum length.",
             },
           ],
         },
@@ -195,6 +199,7 @@ describe("compare.service", () => {
       const pages: CrawledPage[] = [
         {
           url: "https://example.com/mixed",
+          path: "/mixed",
           title: "Mixed Page",
           sections: [
             {
@@ -205,7 +210,7 @@ describe("compare.service", () => {
             {
               heading: "Valid Section",
               level: 1,
-              content: "This has content.",
+              content: "This has content that is meaningful and long enough to pass validation. We need at least 100 characters for a chunk to be considered valid.",
             },
           ],
         },

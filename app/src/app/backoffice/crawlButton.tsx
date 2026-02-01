@@ -115,10 +115,10 @@ function CrawlPanel(): React.ReactElement {
   };
 
   const percentage = progress ? Math.round((progress.pagesVisited / progress.totalPages) * 100) : 0;
-  const embeddingPercentage = progress?.embeddingsTotal > 0 
+  const embeddingPercentage = progress && progress.embeddingsTotal > 0 
     ? Math.round((progress.embeddingsGenerated / progress.embeddingsTotal) * 100) 
     : 0;
-  const dbPercentage = progress?.chunksToAdd > 0 
+  const dbPercentage = progress && progress.chunksToAdd > 0 
     ? Math.round((progress.chunksAddedToDB / progress.chunksToAdd) * 100) 
     : 0;
   const isRunning = progress?.status === 'running';
