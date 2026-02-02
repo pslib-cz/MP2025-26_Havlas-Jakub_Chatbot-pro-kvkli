@@ -162,7 +162,7 @@ describe("compare.service", () => {
       // Continuation chunks should have "(cont.)" in heading
       if (chunks.length > 1) {
         for (let i = 1; i < chunks.length; i++) {
-          expect(chunks[i].text).toContain("(cont.)");
+          expect(chunks[i].text).toContain("(pokračování)");
         }
       }
     });

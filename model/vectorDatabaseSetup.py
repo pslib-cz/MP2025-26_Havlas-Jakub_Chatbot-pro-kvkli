@@ -21,8 +21,8 @@ df = pd.read_csv(csv_path, encoding="utf-8")
 
 # === 1.1 Filter to only keep records with all required fields ===
 def has_all_fields(row):
-    """Check if row has all required fields (Title, Author, Subjects, Description)"""
-    required_fields = ["Title", "Author", "Subjects", "Description"]
+    """Check if row has all required fields (Title, Author, Description)"""
+    required_fields = ["Title", "Author", "Description"]
     for field in required_fields:
         value = str(row.get(field, "")).strip()
         if not value or value.lower() in ["nan", "none", ""]:
@@ -32,7 +32,7 @@ def has_all_fields(row):
 initial_count = len(df)
 df = df[df.apply(has_all_fields, axis=1)].reset_index(drop=True)
 filtered_count = len(df)
-print(f"📋 Filtered dataset: {initial_count:,} → {filtered_count:,} records (kept only records with all fields)")
+print(f"📋 Filtered dataset: {initial_count:,} → {filtered_count:,} records (kept only records with Title, Author, and Description)")
 
 # === 1.2 Create embedding-ready text by combining fields ===
 def make_embedding_text(row):
@@ -46,10 +46,6 @@ def make_embedding_text(row):
     if author:
         parts.append(f"Author: {author}")
 
-    subjects = str(row.get("Subjects", "")).strip()
-    if subjects:
-        parts.append(f"Subjects: {subjects}")
-
     description = str(row.get("Description", "")).strip()
     if description:
         parts.append(f"Description: {description}")
@@ -60,6 +56,8 @@ def make_embedding_text(row):
 
 df["embedding_text"] = df.apply(make_embedding_text, axis=1)
 texts = df["embedding_text"].astype(str).tolist()
+
+print(f"📊 Total records to embed: {len(texts):,}")
 
 # === 2. Chroma DB ===
 chroma_path = os.path.abspath("./chroma_db")
