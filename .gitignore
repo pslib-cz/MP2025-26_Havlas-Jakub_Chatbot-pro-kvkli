@@ -27,3 +27,7 @@ books_cleaned.csv
 app/chroma_db/chroma.sqlite3
 app/chroma_db/*
 chroma_db/*
+
+booksFR.csv
+complete_records.csv
+complete_records_fixed.csv
