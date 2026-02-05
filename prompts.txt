@@ -377,3 +377,10 @@ It is still not done, but I mainly care for learning, but I have aprox 1.5 month
 
 -------------
 
+
+
+okay accordinf to information edit this so that it goes to complete_records_fixed csv and it creates asynchronously vector database from:
+Title + Description + (Author OR Contributors): 164835 records (17.58%)
+
+with nullable fields of:
+Subjects
