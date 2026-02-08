@@ -5,7 +5,6 @@ import chromadb
 from openai import OpenAI
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
 
 # === 0. Load API key ===
 load_dotenv(".env.local")
@@ -103,10 +102,16 @@ print(f"📊 Total records to embed: {len(texts):,}")
 print(f"📝 Sample ID format: {ids[0]} (from {df['Identifier'].iloc[0]})")
 
 # === 2. Chroma DB ===
-chroma_path = os.path.abspath("./chroma_db")
-print("📂 Using Chroma DB path:", chroma_path)
+# Connect to the Docker-hosted ChromaDB server instead of local storage
+chroma_host = os.getenv("CHROMA_HOST", "localhost")
+chroma_port = int(os.getenv("CHROMA_PORT", "8000"))
 
-chroma_client = chromadb.PersistentClient(path=chroma_path)
+print(f"🔌 Connecting to ChromaDB server at {chroma_host}:{chroma_port}")
+
+# For production: ensure ChromaDB is using persistent storage
+# The Docker container should have a volume mounted, e.g.:
+# docker run -p 8000:8000 -v ./chroma_data:/chroma/chroma chromadb/chroma
+chroma_client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
 
 # Delete old collection if exists
 try:
@@ -115,12 +120,10 @@ try:
 except: 
     pass
 
+# Create collection WITHOUT embedding_function since we provide embeddings manually
 collection = chroma_client.create_collection(
-    "books",
-    embedding_function=OpenAIEmbeddingFunction(
-        api_key=api_key,
-        model_name="text-embedding-3-small"
-    )
+    name="books",
+    metadata={"hnsw:space": "cosine"}  # Optional: specify distance metric
 )
 
 # === 3. Embedding helper ===
@@ -187,7 +190,10 @@ for i in range(0, total, batch_size):
     )
 
     total_saved += len(valid_ids)
-    print(f"✅ Saved {len(valid_ids)} records, total inserted: {collection.count()}")
+    
+    # Verify count from server
+    current_count = collection.count()
+    print(f"✅ Saved {len(valid_ids)} records, server total: {current_count}")
 
     elapsed = time.time() - start_time
     avg_per_batch = elapsed / ((i // batch_size) + 1)

@@ -11,15 +11,17 @@ export const aiService = {
                 ReturnType<typeof searchSimilarContent>
             > = [];
 
+            // Try to get context, but don't fail if unavailable
             try {
                 similarContent = await searchSimilarContent(promptText, 5);
             } catch (searchError) {
                 LoggerService.warn(
-                    "Failed to search similar content, continuing without context",
+                    "ChromaDB unavailable, proceeding without context",
                     {
                         error: (searchError as Error).message,
                     },
                 );
+                // Continue without similar content
             }
 
             const contextText = similarContent.length
@@ -104,7 +106,19 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
 
                 return books.length
                     ? books
-                          .map((b) => `📘 ${b.title} — ${b.author}`)
+                          .map((b: typeof books[0]) => {
+                              let result = `📘 **${b.title}** — ${b.author}`;
+                              if (b.recordType) {
+                                  result += ` (${b.recordType})`;
+                              }
+                              if (b.subjects) {
+                                  result += `\n   Témata: ${b.subjects}`;
+                              }
+                              if (b.description) {
+                                  result += `\n   ${b.description}`;
+                              }
+                              return result;
+                          })
                           .join("\n\n")
                     : "Nenašel jsem žádné knihy odpovídající vašemu dotazu.";
             }
@@ -120,7 +134,19 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
 
                 return books.length
                     ? books
-                          .map((b) => `📘 ${b.title} — ${b.author}`)
+                          .map((b: typeof books[0]) => {
+                              let result = `📘 **${b.title}** — ${b.author}`;
+                              if (b.recordType) {
+                                  result += ` (${b.recordType})`;
+                              }
+                              if (b.subjects) {
+                                  result += `\n   Témata: ${b.subjects}`;
+                              }
+                              if (b.description) {
+                                  result += `\n   ${b.description}`;
+                              }
+                              return result;
+                          })
                           .join("\n\n")
                     : "Nenašel jsem žádné knihy odpovídající vašemu popisu.";
             }

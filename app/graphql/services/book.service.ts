@@ -17,34 +17,41 @@ function parseEmbeddingDocument(doc: string | null) {
     let author = "";
     let subjects = "";
     let description = "";
+    let recordType = "";
+    let contributors = "";
+    let notes = "";
 
     for (const line of lines) {
         if (line.startsWith("Title:")) {
             title = line.replace("Title:", "").trim();
         } else if (line.startsWith("Author:")) {
             author = line.replace("Author:", "").trim();
+        } else if (line.startsWith("Contributors:")) {
+            contributors = line.replace("Contributors:", "").trim();
         } else if (line.startsWith("Subjects:")) {
             subjects = line.replace("Subjects:", "").trim();
         } else if (line.startsWith("Description:")) {
             description = line.replace("Description:", "").trim();
+        } else if (line.startsWith("Type:")) {
+            recordType = line.replace("Type:", "").trim();
+        } else if (line.startsWith("Notes:")) {
+            notes = line.replace("Notes:", "").trim();
         }
     }
 
-    // Fix weird data issues ("nan")
-    if (description === "nan") {
-        return {
-            title: title || "Neznámý název",
-            author: author || "Neznámý autor",
-            subjects: subjects || "",
-            description: "",
-        };
-    }
+    // Use Contributors as fallback if Author is missing
+    const finalAuthor = author || contributors || "Neznámý autor";
+
+    // Fix weird data issues ("nan", "none")
+    const isInvalid = (val: string) => !val || val.toLowerCase() === "nan" || val.toLowerCase() === "none";
 
     return {
-        title: title || "Neznámý název",
-        author: author || "Neznámý autor",
-        subjects: subjects || "",
-        description: description || "",
+        title: isInvalid(title) ? "Neznámý název" : title,
+        author: finalAuthor,
+        subjects: isInvalid(subjects) ? "" : subjects,
+        description: isInvalid(description) ? "" : description,
+        recordType: isInvalid(recordType) ? "" : recordType,
+        notes: isInvalid(notes) ? "" : notes,
     };
 }
 
@@ -58,7 +65,13 @@ export const vectorService = {
      */
     async searchBooks(query: string) {
         try {
-            const collection = await chroma.getCollection({ name: "books" });
+            // Add timeout to fail fast
+            const collection = await Promise.race([
+                chroma.getCollection({ name: "books" }),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("ChromaDB timeout")), 3000)
+                )
+            ]) as Awaited<ReturnType<typeof chroma.getCollection>>;
             if (!collection) {
                 console.warn("⚠️ Collection 'books' does not exist.");
                 return [];
@@ -86,7 +99,7 @@ export const vectorService = {
             const ids = result.ids?.[0] || [];
 
             // Convert each stored document into structured book metadata
-            const books = docs.map((doc, idx) => {
+            const books = docs.map((doc: string | null, idx: number) => {
                 const parsed = parseEmbeddingDocument(doc);
                 return {
                     id: ids[idx],
@@ -94,6 +107,8 @@ export const vectorService = {
                     author: parsed.author,
                     subjects: parsed.subjects,
                     description: parsed.description,
+                    recordType: parsed.recordType,
+                    notes: parsed.notes,
                 };
             });
 
@@ -102,6 +117,7 @@ export const vectorService = {
             return books;
         } catch (err) {
             LoggerService.logError(err as Error, "searchBooks", { query });
+            LoggerService.warn("ChromaDB unavailable, returning empty results");
             return [];
         }
     },
