@@ -5,12 +5,30 @@ import chromadb
 from openai import OpenAI
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 # === 0. Load API key ===
-load_dotenv(".env.local")
+# Try multiple .env locations
+env_paths = [
+    Path(".env.local"),
+    Path("../.env.local"),
+    Path("../app/.env.local"),
+]
+
+loaded = False
+for env_path in env_paths:
+    if env_path.exists():
+        print(f"📝 Loading environment from: {env_path}")
+        load_dotenv(env_path)
+        loaded = True
+        break
+
+if not loaded:
+    print("⚠️ No .env.local file found, using system environment variables")
+
 api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
-    raise ValueError("❌ OPENAI_API_KEY not found in .env.local")
+    raise ValueError("❌ OPENAI_API_KEY not found. Please set it in .env.local or environment variables")
 
 client_openai = OpenAI(api_key=api_key)
 

@@ -69,7 +69,7 @@ export const vectorService = {
             const collection = await Promise.race([
                 chroma.getCollection({ name: "books" }),
                 new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error("ChromaDB timeout")), 3000)
+                    setTimeout(() => reject(new Error("ChromaDB timeout")), 5000)
                 )
             ]) as Awaited<ReturnType<typeof chroma.getCollection>>;
             if (!collection) {
@@ -84,7 +84,7 @@ export const vectorService = {
             const embeddingRes = await openai.embeddings.create({
                 model: "text-embedding-3-small",
                 input: rewritten,
-                dimensions: 1536,
+
             });
 
             const queryEmbedding = embeddingRes.data[0].embedding;

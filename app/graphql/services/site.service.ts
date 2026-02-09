@@ -97,7 +97,7 @@ async function generateEmbeddings(texts: string[]): Promise<number[][]> {
             const response = await openai.embeddings.create({
                 model: EMBEDDING_MODEL,
                 input: batch,
-                dimensions: 1536,
+
             });
 
             const batchEmbeddings = response.data.map(
@@ -445,7 +445,7 @@ export async function searchSimilarContent(
         const response = await openai.embeddings.create({
             model: EMBEDDING_MODEL,
             input: expandedQuery,
-            dimensions: 1536,
+
         });
         const queryEmbedding = response.data[0].embedding;
 
@@ -488,6 +488,8 @@ export async function searchSimilarContent(
         const rankedMatches = matches
             .sort((a, b) => b.score - a.score)
             .slice(0, limit);
+
+        console.log("Search results:", rankedMatches);
 
         LoggerService.info("Site search executed", {
             query,

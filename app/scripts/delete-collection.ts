@@ -1,6 +1,6 @@
 import { chroma } from "../lib/chroma";
 
-const COLLECTION_NAME = "kvkli_content";
+const COLLECTION_NAME = "books";
 const CONNECTION_TIMEOUT = 5000; // 5 seconds
 
 async function deleteCollection() {
