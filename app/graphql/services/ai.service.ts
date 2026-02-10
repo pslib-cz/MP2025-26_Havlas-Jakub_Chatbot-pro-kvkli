@@ -2,6 +2,7 @@ import { openai } from "../../lib/openAI";
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 import { vectorService } from "./book.service";
 import { searchSimilarContent } from "./site.service";
+import { queryCatalogService } from "./queryCatalog.service";
 import LoggerService from "./logger.service";
 
 export const aiService = {
@@ -43,7 +44,8 @@ Pokud máš k dispozici relevantní informace z webu knihovny, využij je pro od
 DŮLEŽITÉ: Když odpovídáš na dotaz pomocí informací z webu, vždy přidej na konec odpovědi odkazy ve formátu:
 "📎 Více informací: [Název sekce](URL)"
 Můžeš uvést více odkazů, pokud jsou relevantní.
-Pokud potřebuješ doporučit knihy, použij funkci recommendBooks.
+Pokud čtenář hledá KONKRÉTNÍ knihu (podle názvu nebo autora), použij funkci searchCatalog.
+Pokud potřebuješ doporučit knihy podle tématu/žánru, použij funkci recommendBooks.
 Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                 },
                 {
@@ -55,9 +57,31 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
 
             const functions = [
                 {
+                    name: "searchCatalog",
+                    description:
+                        "Search the library catalog for specific books by title or author. Use this when user asks for a specific book name or author's works. Fast and accurate for known titles.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            searchType: {
+                                type: "string",
+                                enum: ["title", "author", "general"],
+                                description:
+                                    "Type of search: 'title' for book titles, 'author' for author names, 'general' for general search",
+                            },
+                            query: {
+                                type: "string",
+                                description:
+                                    "The book title, author name, or search term",
+                            },
+                        },
+                        required: ["searchType", "query"],
+                    },
+                },
+                {
                     name: "recommendBooks",
                     description:
-                        "Recommend books based on themes, genre, literary period, author era, reader age, or similar books. Use this when user asks for book recommendations.",
+                        "Recommend books based on themes, genre, literary period, author era, reader age, or similar books. Use this when user asks for book recommendations by topic/theme.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -99,6 +123,43 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
             const message = response.choices[0].message;
 
             // Handle function calls
+            if (message.function_call?.name === "searchCatalog") {
+                const { searchType, query } = JSON.parse(message.function_call.arguments);
+                LoggerService.logAIFunctionCall("searchCatalog", { searchType, query });
+
+                let books;
+                if (searchType === "title") {
+                    books = await queryCatalogService.searchByTitle(query);
+                } else if (searchType === "author") {
+                    books = await queryCatalogService.searchByAuthor(query);
+                } else {
+                    books = await queryCatalogService.searchGeneral(query);
+                }
+
+                if (books.length === 0) {
+                    return "Nenašel jsem žádné knihy odpovídající vašemu hledání. Zkuste změnit hledaný výraz nebo se zeptejte jinak.";
+                }
+
+                return books
+                    .map((b) => {
+                        let result = `📘 **[${b.title}](${b.url})** — ${b.author}`;
+                        if (b.year) {
+                            result += ` (${b.year})`;
+                        }
+                        if (b.subjects) {
+                            result += `\n**Témata:** ${b.subjects}`;
+                        }
+                        if (b.description) {
+                            const shortDesc = b.description.length > 150 
+                                ? b.description.substring(0, 150) + '...' 
+                                : b.description;
+                            result += `\n${shortDesc}`;
+                        }
+                        return result;
+                    })
+                    .join("\n\n");
+            }
+
             if (message.function_call?.name === "recommendBooks") {
                 const { query } = JSON.parse(message.function_call.arguments);
                 LoggerService.logAIFunctionCall("recommendBooks", { query });
@@ -107,15 +168,17 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                 return books.length
                     ? books
                           .map((b: typeof books[0]) => {
-                              let result = `📘 **${b.title}** — ${b.author}`;
-                              if (b.recordType) {
-                                  result += ` (${b.recordType})`;
-                              }
+                              const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
+                              const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
+                              let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
                               if (b.subjects) {
-                                  result += `\n   Témata: ${b.subjects}`;
+                                  result += `\n**Témata:** ${b.subjects}`;
                               }
                               if (b.description) {
-                                  result += `\n   ${b.description}`;
+                                  const shortDesc = b.description.length > 150 
+                                      ? b.description.substring(0, 150) + '...' 
+                                      : b.description;
+                                  result += `\n${shortDesc}`;
                               }
                               return result;
                           })
@@ -135,15 +198,17 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                 return books.length
                     ? books
                           .map((b: typeof books[0]) => {
-                              let result = `📘 **${b.title}** — ${b.author}`;
-                              if (b.recordType) {
-                                  result += ` (${b.recordType})`;
-                              }
+                              const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
+                              const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
+                              let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
                               if (b.subjects) {
-                                  result += `\n   Témata: ${b.subjects}`;
+                                  result += `\n**Témata:** ${b.subjects}`;
                               }
                               if (b.description) {
-                                  result += `\n   ${b.description}`;
+                                  const shortDesc = b.description.length > 150 
+                                      ? b.description.substring(0, 150) + '...' 
+                                      : b.description;
+                                  result += `\n${shortDesc}`;
                               }
                               return result;
                           })

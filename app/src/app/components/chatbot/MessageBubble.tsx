@@ -12,13 +12,14 @@ interface MessageBubbleProps {
 
 function parseMarkdownLinks(text: string): React.ReactElement[] {
     const parts: React.ReactElement[] = [];
-    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    // Regex that handles: **[text](url)**, [text](url), **Label:**, **text**
+    const markdownRegex = /\*\*\[([^\]]+)\]\(([^)]+)\)\*\*|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+?):\*\*|\*\*([^*]+)\*\*/g;
     let lastIndex = 0;
     let match;
     let key = 0;
 
-    while ((match = linkRegex.exec(text)) !== null) {
-        // Add text before the link
+    while ((match = markdownRegex.exec(text)) !== null) {
+        // Add text before the match
         if (match.index > lastIndex) {
             parts.push(
                 <span key={`text-${key++}`}>
@@ -27,20 +28,58 @@ function parseMarkdownLinks(text: string): React.ReactElement[] {
             );
         }
 
-        // Add the link
-        const linkText = match[1];
-        const url = match[2];
-        parts.push(
-            <a
-                key={`link-${key++}`}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-white hover:text-gray-200 underline"
-            >
-                {linkText}
-            </a>
-        );
+        if (match[1] && match[2]) {
+            // This is a bold link **[text](url)**
+            const linkText = match[1];
+            const url = match[2];
+            parts.push(
+                <strong key={`bold-link-${key++}`} className="font-semibold text-lg">
+                    <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-white hover:text-gray-200 underline"
+                    >
+                        {linkText}
+                    </a>
+                </strong>
+            );
+        } else if (match[3] && match[4]) {
+            // This is a regular link [text](url)
+            const linkText = match[3];
+            const url = match[4];
+            parts.push(
+                <a
+                    key={`link-${key++}`}
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white hover:text-gray-200 underline"
+                >
+                    {linkText}
+                </a>
+            );
+        } else if (match[5]) {
+            // This is a label **Label:**
+            parts.push(
+                <strong
+                    key={`label-${key++}`}
+                    className="font-semibold text-sm"
+                >
+                    {match[5]}:
+                </strong>
+            );
+        } else if (match[6]) {
+            // This is regular bold text **text**
+            parts.push(
+                <strong
+                    key={`bold-${key++}`}
+                    className="font-semibold text-lg"
+                >
+                    {match[6]}
+                </strong>
+            );
+        }
 
         lastIndex = match.index + match[0].length;
     }

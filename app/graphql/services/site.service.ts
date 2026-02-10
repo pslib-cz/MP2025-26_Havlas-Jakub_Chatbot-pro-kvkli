@@ -489,7 +489,6 @@ export async function searchSimilarContent(
             .sort((a, b) => b.score - a.score)
             .slice(0, limit);
 
-        console.log("Search results:", rankedMatches);
 
         LoggerService.info("Site search executed", {
             query,

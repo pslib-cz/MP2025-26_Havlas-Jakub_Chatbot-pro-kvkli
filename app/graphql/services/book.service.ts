@@ -111,7 +111,7 @@ export const vectorService = {
                     notes: parsed.notes,
                 };
             });
-
+            console.log("Book search results:", books);
             LoggerService.info("Book search executed", { query, resultsCount: books.length });
 
             return books;
