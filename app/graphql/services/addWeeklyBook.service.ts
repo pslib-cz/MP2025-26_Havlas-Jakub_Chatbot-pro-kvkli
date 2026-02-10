@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import OpenAI from "openai";
 import { ChromaClient } from "chromadb";
+import { LoggerService } from "./logger.service";
 
 // ========================
 // Types
@@ -266,11 +267,12 @@ function parseMarcXml(oaiRecord: OAIRecord): BookRecord | null {
 // ========================
 
 async function harvestRecords(from?: string, until?: string): Promise<void> {
-    console.log("📥 Starting harvest...");
+    LoggerService.info("Starting harvest", { from, until });
 
     // Ensure directory exists
     if (!fs.existsSync(HARVEST_DIR)) {
         fs.mkdirSync(HARVEST_DIR, { recursive: true });
+        LoggerService.info("Created harvest directory", { path: HARVEST_DIR });
     }
 
     let url =
@@ -339,16 +341,16 @@ async function harvestRecords(from?: string, until?: string): Promise<void> {
 
             batch++;
             if (batch % 10 === 0) {
-                console.log(`📦 Processed ${batch} batches, ${totalRecords} records...`);
+                LoggerService.info("Harvest progress", { batch, totalRecords });
             }
         } catch (error) {
-            console.error(`❌ Error fetching batch ${batch}:`, error);
+            LoggerService.logError(error as Error, `harvestRecords batch ${batch}`, { batch, totalRecords });
             break;
         }
     }
 
     out.close();
-    console.log(`✅ Harvest complete: ${totalRecords} records saved to ${RAW_CSV}`);
+    LoggerService.info("Harvest complete", { totalRecords, outputFile: RAW_CSV });
 }
 
 // ========================
@@ -398,7 +400,7 @@ function normalizeRecord(record: BookRecord): BookRecord | null {
 }
 
 async function normalizeCsv(): Promise<void> {
-    console.log("🧹 Normalizing CSV...");
+    LoggerService.info("Starting CSV normalization", { inputFile: RAW_CSV, outputFile: CLEAN_CSV });
 
     const lines = fs.readFileSync(RAW_CSV, "utf-8").split("\n");
     const header = lines[0];
@@ -471,7 +473,7 @@ async function normalizeCsv(): Promise<void> {
     }
 
     out.close();
-    console.log(`✅ Normalization complete: ${kept} kept, ${filtered} filtered`);
+    LoggerService.info("Normalization complete", { kept, filtered, totalProcessed: kept + filtered });
 }
 
 // ========================
@@ -493,7 +495,7 @@ function makeEmbeddingText(record: BookRecord): string {
 }
 
 async function ingestToVectorDb(): Promise<void> {
-    console.log("🔮 Starting vector database ingestion...");
+    LoggerService.info("Starting vector database ingestion");
 
     // Initialize OpenAI
     const openai = new OpenAI({
@@ -508,9 +510,9 @@ async function ingestToVectorDb(): Promise<void> {
     // Delete old collection
     try {
         await chroma.deleteCollection({ name: "books" });
-        console.log("🗑️ Deleted old collection");
+        LoggerService.info("Deleted old collection");
     } catch {
-        // Collection doesn't exist
+        LoggerService.debug("No existing collection to delete");
     }
 
     // Create new collection
@@ -518,6 +520,7 @@ async function ingestToVectorDb(): Promise<void> {
         name: "books",
         metadata: { "hnsw:space": "cosine" },
     });
+    LoggerService.info("Created new collection", { name: "books" });
 
     // Read normalized CSV
     const lines = fs.readFileSync(CLEAN_CSV, "utf-8").split("\n");
@@ -554,7 +557,7 @@ async function ingestToVectorDb(): Promise<void> {
         });
     }
 
-    console.log(`📊 Processing ${records.length} records...`);
+    LoggerService.info("Processing records for ingestion", { totalRecords: records.length });
 
     // Process in batches
     const batchSize = 100;
@@ -565,7 +568,8 @@ async function ingestToVectorDb(): Promise<void> {
         const texts = batch.map(makeEmbeddingText);
         const ids = batch.map((r) => extractCpkId(r.Identifier));
 
-        console.log(`\n🧠 Embedding batch ${Math.floor(i / batchSize) + 1}...`);
+        const batchNum = Math.floor(i / batchSize) + 1;
+        LoggerService.debug("Embedding batch", { batchNum, batchSize: batch.length });
 
         try {
             // Get embeddings
@@ -584,9 +588,9 @@ async function ingestToVectorDb(): Promise<void> {
             });
 
             totalSaved += batch.length;
-            console.log(`✅ Saved ${batch.length} records (total: ${totalSaved}/${records.length})`);
+            LoggerService.info("Batch saved", { batchNum, batchSize: batch.length, totalSaved, totalRecords: records.length });
         } catch (error) {
-            console.error(`❌ Error processing batch:`, error);
+            LoggerService.logError(error as Error, `ingestToVectorDb batch ${batchNum}`, { batchNum, batchSize: batch.length });
         }
 
         // Rate limiting
@@ -594,7 +598,7 @@ async function ingestToVectorDb(): Promise<void> {
     }
 
     const count = await collection.count();
-    console.log(`\n🎉 Ingestion complete! Total in database: ${count}`);
+    LoggerService.info("Ingestion complete", { totalInDatabase: count, totalSaved });
 }
 
 // ========================
@@ -602,7 +606,7 @@ async function ingestToVectorDb(): Promise<void> {
 // ========================
 
 export async function runWeeklyBookUpdate(): Promise<void> {
-    console.log("🚀 Starting weekly book update pipeline...\n");
+    LoggerService.info("Starting weekly book update pipeline");
 
     const startTime = Date.now();
 
@@ -613,7 +617,7 @@ export async function runWeeklyBookUpdate(): Promise<void> {
             .toISOString()
             .split("T")[0];
 
-        console.log(`📅 Date range: ${from} to ${until}\n`);
+        LoggerService.info("Date range calculated", { from, until });
 
         // Step 1: Harvest
         await harvestRecords(from, until);
@@ -625,14 +629,17 @@ export async function runWeeklyBookUpdate(): Promise<void> {
         await ingestToVectorDb();
 
         const elapsed = (Date.now() - startTime) / 1000;
-        console.log(`\n✨ Pipeline complete in ${elapsed.toFixed(1)}s`);
+        LoggerService.info("Pipeline complete", { elapsedSeconds: elapsed });
     } catch (error) {
-        console.error("❌ Pipeline failed:", error);
+        LoggerService.logError(error as Error, "runWeeklyBookUpdate");
         throw error;
     }
 }
 
 // For testing
 if (require.main === module) {
-    runWeeklyBookUpdate().catch(console.error);
+    runWeeklyBookUpdate().catch((error) => {
+        LoggerService.logError(error, "main");
+        process.exit(1);
+    });
 }

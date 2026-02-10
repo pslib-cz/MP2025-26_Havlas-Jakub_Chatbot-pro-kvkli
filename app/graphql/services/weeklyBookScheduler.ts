@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { runWeeklyBookUpdate } from "./addWeeklyBook.service";
+import { LoggerService } from "./logger.service";
 
 /**
  * Schedule weekly book updates
@@ -10,26 +11,26 @@ export function startWeeklyBookScheduler() {
     // "0 2 * * 0" = Every Sunday at 2:00 AM
     const schedule = process.env.BOOK_UPDATE_SCHEDULE || "0 2 * * 0";
 
-    console.log(`📅 Scheduling weekly book updates: ${schedule}`);
+    LoggerService.info("Scheduling weekly book updates", { schedule });
 
     cron.schedule(schedule, async () => {
-        console.log("\n⏰ Scheduled weekly book update starting...");
+        LoggerService.info("Scheduled weekly book update starting");
         try {
             await runWeeklyBookUpdate();
-            console.log("✅ Scheduled update completed successfully");
+            LoggerService.info("Scheduled update completed successfully");
         } catch (error) {
-            console.error("❌ Scheduled update failed:", error);
+            LoggerService.logError(error as Error, "scheduled weekly book update");
             // Optionally: send notification/alert
         }
     });
 
-    console.log("✅ Weekly book scheduler started");
+    LoggerService.info("Weekly book scheduler started");
 }
 
 /**
  * Run update immediately (for manual triggers)
  */
 export async function triggerManualUpdate() {
-    console.log("🔧 Manual update triggered");
+    LoggerService.info("Manual update triggered");
     return runWeeklyBookUpdate();
 }
