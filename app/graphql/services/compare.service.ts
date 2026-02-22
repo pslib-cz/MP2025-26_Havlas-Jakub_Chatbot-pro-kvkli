@@ -118,12 +118,29 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
             continue;
         }
 
-        for (const section of page.sections) {
+        // Build hierarchical context for contact pages
+        let departmentContext = "";
+        const isContactPage = page.url.toLowerCase().includes('/kontakt');
+        
+        for (let sectionIdx = 0; sectionIdx < page.sections.length; sectionIdx++) {
+            const section = page.sections[sectionIdx];
             const content = section.content.trim();
             if (!content) continue;
 
+            // Update department context on contact pages (h2 level)
+            if (isContactPage && section.level === 2) {
+                departmentContext = section.heading;
+            }
+
             // Add page title and URL context to improve relevance
-            const contextPrefix = `Stránka: ${page.title}\nURL: ${page.path}\n\n`;
+            let contextPrefix = `Stránka: ${page.title}\nURL: ${page.path}\n`;
+            
+            // For contact pages, include department context in h3 subsections
+            if (isContactPage && section.level === 3 && departmentContext) {
+                contextPrefix += `Oddělení: ${departmentContext}\n`;
+            }
+            
+            contextPrefix += '\n';
 
             // If section is small enough, keep as single chunk
             if (content.length <= MAX_CHUNK_CHARS) {

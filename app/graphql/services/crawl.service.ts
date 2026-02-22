@@ -119,6 +119,9 @@ function sleep(ms: number) {
 function normalizeUrl(url: string) {
     const u = new URL(url);
     u.hash = "";
+    // Strip query parameters - kvkli.cz uses ?focus= for accessibility only,
+    // not for distinct content pages. This prevents duplicate chunk creation.
+    u.search = "";
     return u.toString();
 }
 

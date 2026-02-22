@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight } from "lucide-react";
 import { useMutation } from "@apollo/client/react";
@@ -27,6 +27,11 @@ export default function Chatbot() {
     const [conversationId, setConversationId] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [waitingMessageIndex, setWaitingMessageIndex] = useState(0);
+    const [feedbackToast, setFeedbackToast] = useState<{
+        show: boolean;
+        messageIndex: number | null;
+    }>({ show: false, messageIndex: null });
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (isLoading) {
@@ -38,6 +43,10 @@ export default function Chatbot() {
             return () => clearInterval(interval);
         }
     }, [isLoading]);
+
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages, answers, isLoading]);
 
     const handleSendMessage = async () => {
         if (!input.trim()) return;
@@ -83,6 +92,12 @@ export default function Chatbot() {
                     userFeedback: isPositive,
                 },
             });
+
+            // Show toast notification
+            setFeedbackToast({ show: true, messageIndex });
+            setTimeout(() => {
+                setFeedbackToast({ show: false, messageIndex: null });
+            }, 2000);
         } catch (err) {
             console.error("Error submitting feedback:", err);
         }
@@ -150,6 +165,7 @@ export default function Chatbot() {
                                     answer={answers[i]}
                                     onLike={() => handleFeedback(i, true)}
                                     onDislike={() => handleFeedback(i, false)}
+                                    showFeedbackAnimation={feedbackToast.show && feedbackToast.messageIndex === i}
                                 />
                             ))}
 
@@ -158,7 +174,22 @@ export default function Chatbot() {
                                     messageIndex={waitingMessageIndex}
                                 />
                             )}
+                            <div ref={messagesEndRef} />
                         </div>
+
+                        {/* Toast Notification */}
+                        <AnimatePresence>
+                            {feedbackToast.show && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 50 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    exit={{ opacity: 0, y: 50 }}
+                                    className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg"
+                                >
+                                    Zpětná vazba uložena
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
 
                         {/* Input */}
                         <ChatInput

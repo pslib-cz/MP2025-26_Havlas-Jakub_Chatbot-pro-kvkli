@@ -1,99 +1,39 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { ThumbsUp, ThumbsDown } from "lucide-react";
+
+const parseMarkdownLinks = (text: string): React.ReactNode => {
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = linkRegex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            parts.push(text.substring(lastIndex, match.index));
+        }
+        parts.push(
+            <a key={match.index} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                {match[1]}
+            </a>
+        );
+        lastIndex = linkRegex.lastIndex;
+    }
+
+    if (lastIndex < text.length) {
+        parts.push(text.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
+};
 
 interface MessageBubbleProps {
     message: string;
     answer?: string;
     onLike: () => void;
     onDislike: () => void;
-}
-
-function parseMarkdownLinks(text: string): React.ReactElement[] {
-    const parts: React.ReactElement[] = [];
-    // Regex that handles: **[text](url)**, [text](url), **Label:**, **text**
-    const markdownRegex = /\*\*\[([^\]]+)\]\(([^)]+)\)\*\*|\[([^\]]+)\]\(([^)]+)\)|\*\*([^*]+?):\*\*|\*\*([^*]+)\*\*/g;
-    let lastIndex = 0;
-    let match;
-    let key = 0;
-
-    while ((match = markdownRegex.exec(text)) !== null) {
-        // Add text before the match
-        if (match.index > lastIndex) {
-            parts.push(
-                <span key={`text-${key++}`}>
-                    {text.substring(lastIndex, match.index)}
-                </span>
-            );
-        }
-
-        if (match[1] && match[2]) {
-            // This is a bold link **[text](url)**
-            const linkText = match[1];
-            const url = match[2];
-            parts.push(
-                <strong key={`bold-link-${key++}`} className="font-semibold text-lg">
-                    <a
-                        href={url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-white hover:text-gray-200 underline"
-                    >
-                        {linkText}
-                    </a>
-                </strong>
-            );
-        } else if (match[3] && match[4]) {
-            // This is a regular link [text](url)
-            const linkText = match[3];
-            const url = match[4];
-            parts.push(
-                <a
-                    key={`link-${key++}`}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-white hover:text-gray-200 underline"
-                >
-                    {linkText}
-                </a>
-            );
-        } else if (match[5]) {
-            // This is a label **Label:**
-            parts.push(
-                <strong
-                    key={`label-${key++}`}
-                    className="font-semibold text-sm"
-                >
-                    {match[5]}:
-                </strong>
-            );
-        } else if (match[6]) {
-            // This is regular bold text **text**
-            parts.push(
-                <strong
-                    key={`bold-${key++}`}
-                    className="font-semibold text-lg"
-                >
-                    {match[6]}
-                </strong>
-            );
-        }
-
-        lastIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text
-    if (lastIndex < text.length) {
-        parts.push(
-            <span key={`text-${key++}`}>
-                {text.substring(lastIndex)}
-            </span>
-        );
-    }
-
-    return parts.length > 0 ? parts : [<span key="text-0">{text}</span>];
+    showFeedbackAnimation?: boolean;
 }
 
 export default function MessageBubble({
@@ -101,7 +41,22 @@ export default function MessageBubble({
     answer,
     onLike,
     onDislike,
+    showFeedbackAnimation = false,
 }: MessageBubbleProps) {
+    const [clickedButton, setClickedButton] = useState<'like' | 'dislike' | null>(null);
+
+    const handleLike = () => {
+        setClickedButton('like');
+        onLike();
+        setTimeout(() => setClickedButton(null), 300);
+    };
+
+    const handleDislike = () => {
+        setClickedButton('dislike');
+        onDislike();
+        setTimeout(() => setClickedButton(null), 300);
+    };
+
     return (
         <>
             {/* User message */}
@@ -113,25 +68,30 @@ export default function MessageBubble({
 
             {/* Bot answer */}
             {answer && (
-                <div className="flex flex-col gap-2">
-                    <div className="bg-[#3d4b6e] text-white px-4 py-2 rounded-2xl rounded-tl-none max-w-[80%] shadow-sm whitespace-pre-wrap">
+                <div className="flex gap-2 items-start justify-start mb-2">
+                    <div className="bg-white text-gray-800 rounded-lg p-3 max-w-xs shadow-sm">
                         {parseMarkdownLinks(answer)}
-                    </div>
-                    <div className="flex gap-2 ml-2">
-                        <button
-                            onClick={onLike}
-                            className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                            aria-label="Like"
-                        >
-                            <ThumbsUp size={16} className="text-gray-500" />
-                        </button>
-                        <button
-                            onClick={onDislike}
-                            className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                            aria-label="Dislike"
-                        >
-                            <ThumbsDown size={16} className="text-gray-500" />
-                        </button>
+
+                        <div className="flex gap-2 mt-2">
+                            <button
+                                onClick={handleLike}
+                                className={`text-gray-500 hover:text-green-600 transition-all ${
+                                    clickedButton === 'like' ? 'animate-pulse shadow-lg scale-110' : ''
+                                }`}
+                                aria-label="Like"
+                            >
+                                <ThumbsUp size={16} />
+                            </button>
+                            <button
+                                onClick={handleDislike}
+                                className={`text-gray-500 hover:text-red-600 transition-all ${
+                                    clickedButton === 'dislike' ? 'animate-pulse shadow-lg scale-110' : ''
+                                }`}
+                                aria-label="Dislike"
+                            >
+                                <ThumbsDown size={16} />
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

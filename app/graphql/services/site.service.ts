@@ -176,8 +176,26 @@ export async function updateVectorDB(
     chunksToRemove: Chunk[],
 ): Promise<{ added: number; removed: number }> {
     try {
+        // Deduplicate chunksToAdd by text hash to avoid inserting duplicates
+        const seenHashes = new Set<string>();
+        const deduplicatedChunksToAdd = chunksToAdd.filter((chunk) => {
+            if (seenHashes.has(chunk.hash)) {
+                return false;
+            }
+            seenHashes.add(chunk.hash);
+            return true;
+        });
+
+        if (deduplicatedChunksToAdd.length < chunksToAdd.length) {
+            LoggerService.info("Deduplicated chunks before insert", {
+                original: chunksToAdd.length,
+                deduplicated: deduplicatedChunksToAdd.length,
+                removed: chunksToAdd.length - deduplicatedChunksToAdd.length,
+            });
+        }
+
         LoggerService.info("🗄️ Starting vector DB update", {
-            chunksToAdd: chunksToAdd.length,
+            chunksToAdd: deduplicatedChunksToAdd.length,
             chunksToRemove: chunksToRemove.length,
         });
         const collection = await getCollection();
@@ -209,23 +227,23 @@ export async function updateVectorDB(
             }
         }
 
-        // Add new/changed chunks
+        // Add new/changed chunks - use deduplicated list
         let added = 0;
-        if (chunksToAdd.length > 0) {
+        if (deduplicatedChunksToAdd.length > 0) {
             LoggerService.info("➕ Adding new/updated chunks", {
-                count: chunksToAdd.length,
+                count: deduplicatedChunksToAdd.length,
             });
             
             // Update total embeddings count
             updateCrawlProgress({
-                embeddingsTotal: chunksToAdd.length,
+                embeddingsTotal: deduplicatedChunksToAdd.length,
                 embeddingsGenerated: 0,
             });
             
-            const texts = chunksToAdd.map((chunk) => chunk.text);
+            const texts = deduplicatedChunksToAdd.map((chunk) => chunk.text);
             const embeddings = await generateEmbeddings(texts);
-            const ids = chunksToAdd.map(getChunkId);
-            const metadatas = chunksToAdd.map((chunk) => ({
+            const ids = deduplicatedChunksToAdd.map(getChunkId);
+            const metadatas = deduplicatedChunksToAdd.map((chunk) => ({
                 url: chunk.url,
                 section_heading: chunk.section_heading,
                 chunk_index: chunk.chunk_index,
@@ -365,41 +383,18 @@ export async function updateVectorDB(
 }
 
 /**
- * Expand colloquial Czech queries to more formal library terms
- */
-function expandQuery(query: string): string {
-    const queryLower = query.toLowerCase();
-    
-    // Map colloquial terms to formal library terms
-    const expansions: { [key: string]: string[] } = {
-        'výpůjčk': ['půjčování', 'výpůjční služby', 'jak si půjčit knihu', 'výpůjční lhůta'],
-        'půjč': ['půjčování', 'výpůjčky', 'jak si vypůjčit', 'borrowing'],
-        'knihy': ['dokumenty', 'publikace', 'média', 'materiály'],
-        'vrác': ['návrat', 'vrácení dokumentů', 'returning'],
-        'prodlouž': ['prodloužení výpůjčky', 'renewal', 'jak prodloužit'],
-        'registr': ['registrace', 'přihlášení', 'členství', 'čtenářský průkaz'],
-        'plat': ['poplatky', 'ceny', 'ceník služeb', 'fees'],
-        'otevř': ['otevírací doba', 'provozní doba', 'kdy máte otevřeno'],
-    };
-    
-    let expandedQuery = query;
-    
-    for (const [pattern, terms] of Object.entries(expansions)) {
-        if (queryLower.includes(pattern)) {
-            expandedQuery += ' ' + terms.join(' ');
-            break; // Only expand first match to avoid query becoming too long
-        }
-    }
-    
-    return expandedQuery;
-}
-
-/**
  * Score boost based on URL relevance to query
  */
 function getUrlRelevanceBoost(url: string, query: string): number {
     const urlLower = url.toLowerCase();
     const queryLower = query.toLowerCase();
+    
+    // Boost contact page for director/management queries
+    if ((queryLower.includes('ředitel') || queryLower.includes('vedení') || 
+         queryLower.includes('petrydesová') || queryLower.includes('dana')) && 
+        urlLower.includes('/kontakt')) {
+        return 0.4;
+    }
     
     // Boost service-related pages
     if (urlLower.includes('/sluzby/')) return 0.2;
@@ -434,25 +429,21 @@ export async function searchSimilarContent(
             return [];
         }
 
-        // Expand query with related terms
-        const expandedQuery = expandQuery(query);
-        
-        LoggerService.info("Query expansion", {
-            original: query,
-            expanded: expandedQuery,
+        LoggerService.info("Executing semantic search", {
+            query,
+            limit,
         });
 
         const response = await openai.embeddings.create({
             model: EMBEDDING_MODEL,
-            input: expandedQuery,
-
+            input: query,
         });
         const queryEmbedding = response.data[0].embedding;
 
-        // Get more results for re-ranking
+        // Get more results for re-ranking and deduplication
         const results = await collection.query({
             queryEmbeddings: [queryEmbedding],
-            nResults: limit * 3, // Get 3x more results for filtering
+            nResults: Math.min(limit * 5, count), // Get 5x more for dedup headroom
             include: ["metadatas", "documents", "distances"],
         });
 
@@ -463,6 +454,9 @@ export async function searchSimilarContent(
             score: number;
         }> = [];
 
+        // Deduplicate by text content hash
+        const seenTextHashes = new Set<string>();
+
         if (results.ids && results.ids[0]) {
             for (let i = 0; i < results.ids[0].length; i++) {
                 const metadata = results.metadatas?.[0]?.[i];
@@ -470,10 +464,18 @@ export async function searchSimilarContent(
                 const distance = results.distances?.[0]?.[i];
 
                 if (metadata && document) {
+                    // Create a hash of the text to detect duplicates
+                    const textKey = `${metadata.url as string}::${(document as string).substring(0, 100)}`;
+
+                    if (seenTextHashes.has(textKey)) {
+                        continue; // Skip duplicate
+                    }
+                    seenTextHashes.add(textKey);
+
                     const baseScore = distance ? 1 - distance : 0;
                     const urlBoost = getUrlRelevanceBoost(metadata.url as string, query);
                     const finalScore = baseScore + urlBoost;
-                    
+
                     matches.push({
                         text: document,
                         url: metadata.url as string,
@@ -489,14 +491,12 @@ export async function searchSimilarContent(
             .sort((a, b) => b.score - a.score)
             .slice(0, limit);
 
-
         LoggerService.info("Site search executed", {
             query,
-            expandedQuery,
             resultsCount: rankedMatches.length,
             topUrls: rankedMatches.slice(0, 3).map(m => ({ url: m.url, score: m.score })),
         });
-        
+        console.log("Search results:", rankedMatches);
         return rankedMatches;
     } catch (error) {
         LoggerService.logError(error as Error, "searchSimilarContent", {
