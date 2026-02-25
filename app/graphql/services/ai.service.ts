@@ -94,10 +94,12 @@ Místo toho řekni: "Omlouvám se, ale nemám k této otázce dostatečné infor
 
 PRAVIDLO PRO KONTEXT KONVERZACE - VELMI DŮLEŽITÉ:
 - VŽDY si pamatuj předchozí otázky a odpovědi v konverzaci
-- Když uživatel použije zájmena jako "na ní", "na něj", "mu", "toho", "její", "jeho" apod., MUSÍŠ se odkázat na předchozí kontext
+- Když uživatel použije zájmena jako "na ní", "na něj", "mu", "toho", "jejich", "jejím", "jeho" apod., MUSÍŠ se odkázat na předchozí kontext
 - Pokud jsi v předchozí odpovědi zmínil osobu, místo, věc nebo službu, a uživatel se ptá na detail pomocí zájmena, rozpoznej k čemu se zájmeno vztahuje
+- KRITICKÉ: Pokud předchozí konverzace byla o KNIHÁCH nebo AUTORECH a uživatel se ptá "A nějaké volné?", "Jsou dostupné?", "Máte je?" apod., VŽDY to interpretuj jako dotaz na dostupnost knih k vypůjčení — NIKDY jako dotaz na volná místa nebo pracovní nabídky
 - Příklady:
   * Pokud uživatel ptal "Kdo je ředitelkou?" a odpověděl jsi "PhDr. Dana Petrýdesová", pak při otázce "Dáš mi na ní číslo?" víš, že "ní" = Dana Petrýdesová = ředitelka
+  * Pokud uživatel ptal "Jaké máte knihy od Jo Nesbø?" a pak se ptá "A nějaké volné?" nebo "Jsou volné?", víš, že "volné" = dostupné k vypůjčení knihy od Jo Nesbø → zavolej searchCatalog nebo recommendBooks pro daného autora
   * Pokud uživatel ptal "Kde je dětské oddělení?" a pak se ptá "Jaké mají číslo?", víš, že "mají" = dětské oddělení
 
 PRAVIDLO PRO VYHLEDÁVÁNÍ S KONTEXTEM:
@@ -151,7 +153,7 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                 {
                     name: "searchCatalog",
                     description:
-                        "Search the library catalog for specific books by title or author. Use this when user asks for a specific book name or author's works. Fast and accurate for known titles.",
+                        "Search the library catalog for specific books by title or author. Use this when user asks for a specific book name or author's works. Fast and accurate for known titles. NOTE: For author names with diacritics or variations (e.g. 'Nesbo', 'Nesbø', 'Jo Nesbø'), always use searchType 'author' and provide the best known form of the name.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -173,7 +175,7 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                 {
                     name: "recommendBooks",
                     description:
-                        "Recommend books based on themes, genre, literary period, author era, reader age, or similar books. Use this when user asks for book recommendations by topic/theme.",
+                        "Recommend books based on themes, genre, literary period, author era, reader age, or similar books. Also use this as a FALLBACK when searching for books by a specific author if catalog search returns no results.",
                     parameters: {
                         type: "object",
                         properties: {
@@ -223,6 +225,28 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                     books = await queryCatalogService.searchByTitle(query);
                 } else if (searchType === "author") {
                     books = await queryCatalogService.searchByAuthor(query);
+                    // Fallback: if catalog author search returns nothing, try vector search
+                    if (books.length === 0) {
+                        LoggerService.warn("Catalog author search returned no results, trying vector fallback", { query });
+                        const vectorBooks = await vectorService.searchBooks(query);
+                        if (vectorBooks.length > 0) {
+                            return vectorBooks
+                                .map((b: typeof vectorBooks[0]) => {
+                                    const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
+                                    const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
+                                    let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
+                                    if (b.subjects) result += `\n**Témata:** ${b.subjects}`;
+                                    if (b.description) {
+                                        const shortDesc = b.description.length > 150
+                                            ? b.description.substring(0, 150) + '...'
+                                            : b.description;
+                                        result += `\n${shortDesc}`;
+                                    }
+                                    return result;
+                                })
+                                .join("\n\n");
+                        }
+                    }
                 } else {
                     books = await queryCatalogService.searchGeneral(query);
                 }
