@@ -30,6 +30,13 @@ describe("Smoke Tests - Services Load", () => {
     expect(prismaService.prismaService.findAllConversations).toBeDefined();
     expect(prismaService.prismaService.findAllPrompts).toBeDefined();
   });
+
+  it("should load originGuard without errors", async () => {
+    const originGuard = await import("../../graphql/middleware/originGuard");
+
+    expect(originGuard.validateOrigin).toBeDefined();
+    expect(originGuard.extractTokenFromHeaders).toBeDefined();
+  });
 });
 
 describe("Smoke Tests - Basic Functionality", () => {
@@ -83,6 +90,55 @@ describe("Smoke Tests - Basic Functionality", () => {
   });
 });
 
+describe("Smoke Tests - Origin Guard", () => {
+  it("should allow exempt operations without origin", async () => {
+    const { validateOrigin } = await import("../../graphql/middleware/originGuard");
+
+    // These should NOT throw
+    expect(() => validateOrigin(null, null, "login")).not.toThrow();
+    expect(() => validateOrigin(null, null, "Login")).not.toThrow();
+    expect(() => validateOrigin(null, null, "heartbeat")).not.toThrow();
+    expect(() => validateOrigin(null, null, "IntrospectionQuery")).not.toThrow();
+  });
+
+  it("should reject requests with no origin and non-exempt operation", async () => {
+    const { validateOrigin } = await import("../../graphql/middleware/originGuard");
+
+    expect(() => validateOrigin(null, null, "getConversations")).toThrow("Forbidden: missing origin");
+    expect(() => validateOrigin(undefined, undefined, "someQuery")).toThrow("Forbidden: missing origin");
+  });
+
+  it("should allow requests from default localhost origin", async () => {
+    const { validateOrigin } = await import("../../graphql/middleware/originGuard");
+
+    // Default ALLOWED_ORIGINS includes http://localhost:3000
+    expect(() => validateOrigin("http://localhost:3000", null, "getConversations")).not.toThrow();
+  });
+
+  it("should reject requests from unknown origins", async () => {
+    const { validateOrigin } = await import("../../graphql/middleware/originGuard");
+
+    expect(() => validateOrigin("http://evil.com", null, "getConversations")).toThrow("Forbidden: invalid origin");
+  });
+
+  it("should extract Bearer token from authorization header", async () => {
+    const { extractTokenFromHeaders } = await import("../../graphql/middleware/originGuard");
+
+    expect(extractTokenFromHeaders("Bearer abc123")).toBe("abc123");
+    expect(extractTokenFromHeaders("Bearer ")).toBe("");
+    expect(extractTokenFromHeaders(null)).toBeUndefined();
+    expect(extractTokenFromHeaders(undefined)).toBeUndefined();
+    expect(extractTokenFromHeaders("Basic abc123")).toBeUndefined();
+    expect(extractTokenFromHeaders("InvalidFormat")).toBeUndefined();
+  });
+
+  it("should use referer as fallback when origin is missing", async () => {
+    const { validateOrigin } = await import("../../graphql/middleware/originGuard");
+
+    expect(() => validateOrigin(null, "http://localhost:3000/some/page", "getConversations")).not.toThrow();
+  });
+});
+
 describe("Smoke Tests - HTML Parsing", () => {
   it("should parse basic HTML", async () => {
     const { parse } = await import("node-html-parser");
@@ -109,7 +165,6 @@ describe("Smoke Tests - Type System", () => {
   it("should have proper TypeScript types for Chunk", async () => {
     const { computeChunkHash } = await import("../../graphql/services/compare.service");
     
-    // This tests that TypeScript compilation works
     const chunk: {
       url: string;
       section_heading: string;

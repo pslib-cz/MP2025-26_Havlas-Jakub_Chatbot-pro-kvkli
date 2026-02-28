@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll } from "@jest/globals";
 
 // Set env vars before importing the service
 beforeAll(() => {
@@ -7,9 +7,14 @@ beforeAll(() => {
     process.env.JWT_SECRET = "test-secret";
 });
 
-import { authService } from "../graphql/services/auth.service";
-
 describe("authService", () => {
+    let authService: typeof import("../../graphql/services/auth.service").authService;
+
+    beforeAll(async () => {
+        const mod = await import("../../graphql/services/auth.service");
+        authService = mod.authService;
+    });
+
     describe("login", () => {
         it("should return a token for valid credentials", () => {
             const token = authService.login("kvkli", "kvkli");

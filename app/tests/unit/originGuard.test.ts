@@ -1,12 +1,17 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll } from "@jest/globals";
 
 beforeAll(() => {
     process.env.ALLOWED_ORIGINS = "http://localhost:3000,https://mysite.com";
 });
 
-import { validateOrigin, extractTokenFromHeaders } from "../graphql/middleware/originGuard";
-
 describe("validateOrigin", () => {
+    let validateOrigin: typeof import("../../graphql/middleware/originGuard").validateOrigin;
+
+    beforeAll(async () => {
+        const mod = await import("../../graphql/middleware/originGuard");
+        validateOrigin = mod.validateOrigin;
+    });
+
     it("should allow requests from allowed origin", () => {
         expect(() =>
             validateOrigin("http://localhost:3000", null, "GetPaginatedPrompts"),
@@ -51,6 +56,13 @@ describe("validateOrigin", () => {
 });
 
 describe("extractTokenFromHeaders", () => {
+    let extractTokenFromHeaders: typeof import("../../graphql/middleware/originGuard").extractTokenFromHeaders;
+
+    beforeAll(async () => {
+        const mod = await import("../../graphql/middleware/originGuard");
+        extractTokenFromHeaders = mod.extractTokenFromHeaders;
+    });
+
     it("should extract token from Bearer header", () => {
         const token = extractTokenFromHeaders("Bearer my-token-123");
         expect(token).toBe("my-token-123");

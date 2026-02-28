@@ -4,6 +4,9 @@ import axios from "axios";
 import { parse } from "node-html-parser";
 import type { HTMLElement } from "node-html-parser";
 import LoggerService from "./logger.service";
+import { log, logError } from "../../lib/logger";
+
+const SERVICE = "crawl";
 
 export type ContentSection = {
     heading: string;

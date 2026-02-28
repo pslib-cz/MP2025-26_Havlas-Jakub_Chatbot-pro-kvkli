@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { authResolvers } from "../graphql/resolvers/auth.resolver";
+import { describe, it, expect } from "@jest/globals";
+import { authResolvers } from "../../graphql/resolvers/auth.resolver";
 
 describe("heartbeat resolver", () => {
     it("should return true", () => {
