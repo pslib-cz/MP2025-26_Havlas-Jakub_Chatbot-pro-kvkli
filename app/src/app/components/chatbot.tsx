@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight } from "lucide-react";
-import { useMutation } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
+import { gql } from "@apollo/client";
 import Image from "next/image";
 import { ADD_PROMPT, ADD_PROMPT_FEEDBACK } from "./chatbot/graphql";
 import { AddPromptData, FeedbackData } from "@/types/chatbot";
@@ -12,7 +13,29 @@ import MessageBubble from "./chatbot/MessageBubble";
 import LoadingIndicator from "./chatbot/LoadingIndicator";
 import ChatInput from "./chatbot/ChatInput";
 
+const HEARTBEAT = gql`
+  query Heartbeat {
+    heartbeat
+  }
+`;
+
+const LIMIT_COOKIE_NAME = "chatbot_limited";
+const LIMIT_DURATION_MS = 60 * 60 * 1000; // 1 hour
+
+function setChatbotLimitCookie() {
+    const expires = new Date(Date.now() + LIMIT_DURATION_MS).toUTCString();
+    document.cookie = `${LIMIT_COOKIE_NAME}=true; expires=${expires}; path=/; SameSite=Strict`;
+}
+
+function isChatbotLimited(): boolean {
+    return document.cookie.split(";").some((c) => c.trim().startsWith(`${LIMIT_COOKIE_NAME}=`));
+}
+
 export default function Chatbot() {
+    const { data: heartbeatData, loading: heartbeatLoading } = useQuery<{ heartbeat: boolean }>(HEARTBEAT, {
+        fetchPolicy: "network-only",
+    });
+
     const [addPromptMutation] = useMutation<
         AddPromptData,
         { promptText: string; conversationId?: number | null }
@@ -27,11 +50,19 @@ export default function Chatbot() {
     const [conversationId, setConversationId] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [waitingMessageIndex, setWaitingMessageIndex] = useState(0);
+    const [isLimited, setIsLimited] = useState(false);
     const [feedbackToast, setFeedbackToast] = useState<{
         show: boolean;
         messageIndex: number | null;
     }>({ show: false, messageIndex: null });
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Check cookie on mount
+    useEffect(() => {
+        if (isChatbotLimited()) {
+            setIsLimited(true);
+        }
+    }, []);
 
     useEffect(() => {
         if (isLoading) {
@@ -48,8 +79,12 @@ export default function Chatbot() {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, answers, isLoading]);
 
+    // Don't render anything while checking heartbeat or if server is down
+    if (heartbeatLoading) return null;
+    if (!heartbeatData?.heartbeat) return null;
+
     const handleSendMessage = async () => {
-        if (!input.trim()) return;
+        if (!input.trim() || isLimited) return;
 
         const messageToSend = input;
         setInput("");
@@ -73,8 +108,25 @@ export default function Chatbot() {
                 ...prev,
                 addPromptResponse?.addPrompt.prompt.answerText || "",
             ]);
-        } catch (err) {
-            console.error("Error adding prompt:", err);
+        } catch (err: unknown) {
+            const error =
+                err as { message?: string; graphQLErrors?: Array<{ message: string }> };
+            const isLimitError =
+                error?.message?.includes("CONVERSATION_LIMIT_REACHED") ||
+                error?.graphQLErrors?.some((e) => e.message.includes("CONVERSATION_LIMIT_REACHED"));
+
+            if (isLimitError) {
+                setChatbotLimitCookie();
+                setIsLimited(true);
+                // Remove the last user message that failed
+                setMessages((prev) => prev.slice(0, -1));
+            } else {
+                console.error("Error adding prompt:", err);
+                setAnswers((prev) => [
+                    ...prev,
+                    "Omlouvám se, došlo k chybě. Zkuste to prosím znovu.",
+                ]);
+            }
         } finally {
             setIsLoading(false);
         }
@@ -93,7 +145,6 @@ export default function Chatbot() {
                 },
             });
 
-            // Show toast notification
             setFeedbackToast({ show: true, messageIndex });
             setTimeout(() => {
                 setFeedbackToast({ show: false, messageIndex: null });
@@ -133,30 +184,18 @@ export default function Chatbot() {
                         className="w-120 bg-white rounded-[5px] shadow-0.5xl overflow-hidden flex flex-col absolute bottom-0 right-0 max-sm:w-full max-sm:rounded-none max-sm:h-screen"
                         style={{ height: "600px" }}
                     >
-                        {/* Header */}
                         <div className="bg-[#3d4b6e] text-white p-4 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <div className="bg-white p-2 rounded-full">
-                                    <Image
-                                        src="/book-icon.svg"
-                                        alt="Book"
-                                        width={24}
-                                        height={24}
-                                    />
+                                    <Image src="/book-icon.svg" alt="Book" width={24} height={24} />
                                 </div>
-                                <span className="font-semibold text-lg">
-                                    Aleš Knihovník
-                                </span>
+                                <span className="font-semibold text-lg">Aleš Knihovník</span>
                             </div>
-                            <button
-                                onClick={() => setIsOpen(false)}
-                                className="hover:bg-white/10 p-1 rounded"
-                            >
+                            <button onClick={() => setIsOpen(false)} className="hover:bg-white/10 p-1 rounded">
                                 <ChevronRight size={24} />
                             </button>
                         </div>
 
-                        {/* Messages */}
                         <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50">
                             {messages.map((msg, i) => (
                                 <MessageBubble
@@ -169,15 +208,17 @@ export default function Chatbot() {
                                 />
                             ))}
 
-                            {isLoading && (
-                                <LoadingIndicator
-                                    messageIndex={waitingMessageIndex}
-                                />
+                            {isLoading && <LoadingIndicator messageIndex={waitingMessageIndex} />}
+
+                            {isLimited && (
+                                <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-lg p-3 text-sm text-center">
+                                    ⚠️ Dosáhli jste maximálního počtu zpráv v této konverzaci. Zkuste to znovu za hodinu, nebo nás <a href="https://www.kvkli.cz/kontakt/kontakty-dle-oddeleni" target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-yellow-900">kontaktujte přímo.</a>.
+                                </div>
                             )}
+
                             <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Toast Notification */}
                         <AnimatePresence>
                             {feedbackToast.show && (
                                 <motion.div
@@ -191,12 +232,13 @@ export default function Chatbot() {
                             )}
                         </AnimatePresence>
 
-                        {/* Input */}
-                        <ChatInput
-                            value={input}
-                            onChange={setInput}
-                            onSend={handleSendMessage}
-                        />
+                        {isLimited ? (
+                            <div className="p-3 border-t bg-gray-100 text-center text-sm text-gray-500">
+                                Chat je dočasně nedostupný. Zkuste to později.
+                            </div>
+                        ) : (
+                            <ChatInput value={input} onChange={setInput} onSend={handleSendMessage} />
+                        )}
                     </motion.div>
                 )}
             </AnimatePresence>

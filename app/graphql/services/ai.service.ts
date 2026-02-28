@@ -14,30 +14,6 @@ export const aiService = {
         conversationHistory?: Array<{ question: string; answer: string }>;
     }) {
         try {
-            let similarContent: Awaited<
-                ReturnType<typeof searchSimilarContent>
-            > = [];
-             try {
-                similarContent = await searchSimilarContent(promptText, 5);
-            } catch (searchError) {
-                LoggerService.warn(
-                    "ChromaDB unavailable, proceeding without context",
-                    {
-                        error: (searchError as Error).message,
-                    },
-                );
-                // Continue without similar content
-            }
-
-            const contextText = similarContent.length
-                ? similarContent
-                      .map(
-                          (item, idx) =>
-                              `[Zdroj ${idx + 1}: ${item.section}]\nURL: ${item.url}\n${item.text}`,
-                      )
-                      .join("\n\n")
-                : "Žádný relevantní obsah nebyl nalezen.";
-
             // Get current date and time
             const now = new Date();
             const currentDateTime = now.toLocaleString("cs-CZ", {
@@ -83,6 +59,8 @@ DŮLEŽITÉ PRAVIDLO PRO FUNKCE:
 - Můžeš zavolat více funkcí nachází-li se relevantní. Volej všechny relevantní funkce v jedné odpovědi.
 - Z výsledků vyber ten s NEJVĚTŠÍM SMYSLEM a RELEVANCÍ pro uživatele.
 - Když je výsledek nejednoznačný, zkombinuj výsledky z více funkcí.
+- Funkci searchWebsite volej POUZE když potřebuješ konkrétní informace z webu knihovny (služby, akce, kontakty, otevírací doby poboček apod.).
+- NEVOLEJ searchWebsite pro běžné pozdravy, testy, nebo otázky které dokážeš zodpovědět sám.
 
 DŮLEŽITÉ PRAVIDLO PRO KONTAKTY:
 - Ředitelkou knihovny je PhDr. Dana Petrýdesová (ředitelství)
@@ -121,20 +99,15 @@ Příklady rozšíření dotazů:
 - "půjčování" → "výpůjčky + půjčování + jak si půjčit + výpůjční lhůta + borrowing"
 - "vrácení" → "návrat + vrácení dokumentů + returning + jak vrátit"
 
-Pokud máš k dispozici relevantní informace z webu knihovny, využij je pro odpověď.
-DŮLEŽITÉ: Když odpovídáš na dotaz pomocí informací z webu, vždy přidej na konec odpovědi odkazy ve formátu:
-"📎 Více informací: [Název sekce](URL)"
-Můžeš uvést více odkazů, pokud jsou relevantní.
+PRAVIDLO PRO ODKAZY:
+- Přidávej odkazy POUZE pokud jsou skutečně relevantní k odpovědi a pomáhají uživateli.
+- U jednoduchých odpovědí (pozdravy, krátké dotazy na otevírací dobu, jednoduché informace) NEPŘIDÁVEJ odkazy.
+- Formát odkazů: "📎 Více informací: [Název sekce](URL)"
 
 Pokud čtenář hledá KONKRÉTNÍ knihu (podle názvu nebo autora), použij funkci searchCatalog.
 Pokud potřebuješ doporučit knihy podle tématu/žánru, použij funkci recommendBooks.
-Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
-                },
-                {
-                    role: "system",
-                    content: contextText === "Žádný relevantní obsah nebyl nalezen."
-                        ? `VAROVÁNÍ: Nebyl nalezen žádný relevantní obsah z webových stránek knihovny. Odpověz pouze pokud máš JISTOTU o správnosti informace, jinak řekni, že nemáš dostatečné informace.`
-                        : `Následující informace jsou z webových stránek knihovny a JSOU RELEVANTNÍ pro odpověď:\n\n${contextText}\n\nPoužij PŘESNĚ tyto informace k odpovědi na otázku uživatele. Pokud informace obsahují data, termíny nebo události, VŽDY je zahrň do odpovědi. Přidej odkazy na relevantní stránky.`,
+Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.
+Pokud potřebuješ informace z webu knihovny (služby, akce, kontakty, pobočky apod.), použij funkci searchWebsite.`,
                 },
             ];
 
@@ -204,6 +177,27 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
                         required: ["plotDescription"],
                     },
                 },
+                {
+                    name: "searchWebsite",
+                    description:
+                        "Search the library website for information about services, events, contacts, branches, opening hours, registration, fees, etc. Use this when you need specific information from the library's website to answer the user's question. You can formulate your own search query — use expanded terms and synonyms for better results. Do NOT use this for greetings or trivial questions.",
+                    parameters: {
+                        type: "object",
+                        properties: {
+                            query: {
+                                type: "string",
+                                description:
+                                    "Search query for the library website. Use expanded terms and synonyms (e.g. 'ředitelka ředitelství vedení kontakt telefon email' instead of just 'ředitel').",
+                            },
+                            maxResults: {
+                                type: "number",
+                                description:
+                                    "Maximum number of results to return (default 5, max 10)",
+                            },
+                        },
+                        required: ["query"],
+                    },
+                },
             ];
 
             const response = await openai.chat.completions.create({
@@ -215,156 +209,70 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
 
             const message = response.choices[0].message;
 
-            // Handle function calls
-            if (message.function_call?.name === "searchCatalog") {
-                const { searchType, query } = JSON.parse(message.function_call.arguments);
-                LoggerService.logAIFunctionCall("searchCatalog", { searchType, query });
+            // Handle searchWebsite function call
+            if (message.function_call?.name === "searchWebsite") {
+                const { query, maxResults } = JSON.parse(message.function_call.arguments);
+                LoggerService.logAIFunctionCall("searchWebsite", { query, maxResults });
 
-                let books;
-                if (searchType === "title") {
-                    books = await queryCatalogService.searchByTitle(query);
-                } else if (searchType === "author") {
-                    books = await queryCatalogService.searchByAuthor(query);
-                    // Fallback: if catalog author search returns nothing, try vector search
-                    if (books.length === 0) {
-                        LoggerService.warn("Catalog author search returned no results, trying vector fallback", { query });
-                        const vectorBooks = await vectorService.searchBooks(query);
-                        if (vectorBooks.length > 0) {
-                            return vectorBooks
-                                .map((b: typeof vectorBooks[0]) => {
-                                    const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
-                                    const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
-                                    let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
-                                    if (b.subjects) result += `\n**Témata:** ${b.subjects}`;
-                                    if (b.description) {
-                                        const shortDesc = b.description.length > 150
-                                            ? b.description.substring(0, 150) + '...'
-                                            : b.description;
-                                        result += `\n${shortDesc}`;
-                                    }
-                                    return result;
-                                })
-                                .join("\n\n");
-                        }
-                    }
-                } else {
-                    books = await queryCatalogService.searchGeneral(query);
+                let similarContent: Awaited<ReturnType<typeof searchSimilarContent>> = [];
+                try {
+                    similarContent = await searchSimilarContent(query, Math.min(maxResults || 5, 10));
+                } catch (searchError) {
+                    LoggerService.warn("ChromaDB unavailable for searchWebsite", {
+                        error: (searchError as Error).message,
+                    });
                 }
 
-                if (books.length === 0) {
-                    return "Nenašel jsem žádné knihy odpovídající vašemu hledání. Zkuste změnit hledaný výraz nebo se zeptejte jinak.";
-                }
-
-                return books
-                    .map((b) => {
-                        let result = `📘 **[${b.title}](${b.url})** — ${b.author}`;
-                        if (b.year) {
-                            result += ` (${b.year})`;
-                        }
-                        if (b.subjects) {
-                            result += `\n**Témata:** ${b.subjects}`;
-                        }
-                        if (b.description) {
-                            const shortDesc = b.description.length > 150 
-                                ? b.description.substring(0, 150) + '...' 
-                                : b.description;
-                            result += `\n${shortDesc}`;
-                        }
-                        return result;
-                    })
-                    .join("\n\n");
-            }
-
-            if (message.function_call?.name === "recommendBooks") {
-                const { query } = JSON.parse(message.function_call.arguments);
-                LoggerService.logAIFunctionCall("recommendBooks", { query });
-                const books = await vectorService.searchBooks(query);
-
-                return books.length
-                    ? books
-                          .map((b: typeof books[0]) => {
-                              const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
-                              const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
-                              let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
-                              if (b.subjects) {
-                                  result += `\n**Témata:** ${b.subjects}`;
-                              }
-                              if (b.description) {
-                                  const shortDesc = b.description.length > 150 
-                                      ? b.description.substring(0, 150) + '...' 
-                                      : b.description;
-                                  result += `\n${shortDesc}`;
-                              }
-                              return result;
-                          })
+                const contextText = similarContent.length
+                    ? similarContent
+                          .map(
+                              (item, idx) =>
+                                  `[Zdroj ${idx + 1}: ${item.section}]\nURL: ${item.url}\n${item.text}`,
+                          )
                           .join("\n\n")
-                    : "Nenašel jsem žádné knihy odpovídající vašemu dotazu.";
-            }
+                    : "Žádný relevantní obsah nebyl nalezen na webu knihovny.";
 
-            if (message.function_call?.name === "findBookByPlot") {
-                const { plotDescription } = JSON.parse(
-                    message.function_call.arguments,
+                // Second pass: let AI formulate answer with the search results
+                messages.push(
+                    { role: "assistant", content: null as unknown as string, function_call: message.function_call },
+                    { role: "function", name: "searchWebsite", content: contextText }
                 );
-                LoggerService.logAIFunctionCall("findBookByPlot", {
-                    plotDescription,
-                });
-                const books = await vectorService.searchBooks(plotDescription);
 
-                return books.length
-                    ? books
-                          .map((b: typeof books[0]) => {
-                              const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
-                              const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
-                              let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
-                              if (b.subjects) {
-                                  result += `\n**Témata:** ${b.subjects}`;
-                              }
-                              if (b.description) {
-                                  const shortDesc = b.description.length > 150 
-                                      ? b.description.substring(0, 150) + '...' 
-                                      : b.description;
-                                  result += `\n${shortDesc}`;
-                              }
-                              return result;
-                          })
-                          .join("\n\n")
-                    : "Nenašel jsem žádné knihy odpovídající vašemu popisu.";
-            }
-
-            // Return direct response from AI with sources
-            let answer =
-                message.content ??
-                "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
-
-            // If AI didn't include links and we have similar content, append them
-            if (similarContent.length > 0 && !answer.includes("http")) {
-                const uniqueUrls = new Map<
-                    string,
-                    { section: string; url: string }
-                >();
-
-                similarContent.forEach((item) => {
-                    if (!uniqueUrls.has(item.url)) {
-                        uniqueUrls.set(item.url, {
-                            section: item.section,
-                            url: item.url,
-                        });
-                    }
+                const secondResponse = await openai.chat.completions.create({
+                    model: "gpt-5-mini-2025-08-07",
+                    messages,
+                    functions,
+                    function_call: "auto",
                 });
 
-                const links = Array.from(uniqueUrls.values())
-                    .slice(0, 3) // Max 3 links
-                    .map((item) => `[${item.section}](${item.url})`)
-                    .join("\n");
+                const secondMessage = secondResponse.choices[0].message;
 
-                answer += `\n\n📎 Více informací:\n${links}`;
+                // Handle chained function calls after searchWebsite
+                if (secondMessage.function_call) {
+                    return await this.handleFunctionCall(secondMessage, messages, functions);
+                }
+
+                LoggerService.info("AI response generated via searchWebsite", {
+                    promptText,
+                    query,
+                    sourcesCount: similarContent.length,
+                });
+
+                return secondMessage.content ?? "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
             }
+
+            // Handle other function calls
+            if (message.function_call) {
+                return await this.handleFunctionCall(message, messages, functions);
+            }
+
+            // Direct response from AI (no function call needed)
+            const answer = message.content ?? "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
 
             LoggerService.info("AI response generated", {
                 promptText,
                 hasContent: !!message.content,
-                hasFunctionCall: !!message.function_call,
-                sourcesCount: similarContent.length,
+                hasFunctionCall: false,
             });
 
             return answer;
@@ -374,5 +282,204 @@ Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.`,
             });
             return "Omlouvám se, došlo k chybě při zpracování vašeho dotazu.";
         }
+    },
+
+   async handleFunctionCall(
+        message: { function_call?: { name: string; arguments: string } | null; content?: string | null },
+        messages: ChatCompletionMessageParam[],
+        functions: Array<{ name: string; description: string; parameters: object }>,
+    ): Promise<string> {
+        if (!message.function_call) {
+            return message.content ?? "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
+        }
+
+        const { name, arguments: args } = message.function_call;
+
+        if (name === "searchCatalog") {
+            const { searchType, query } = JSON.parse(args);
+            LoggerService.logAIFunctionCall("searchCatalog", { searchType, query });
+
+            let books;
+            if (searchType === "title") {
+                books = await queryCatalogService.searchByTitle(query);
+            } else if (searchType === "author") {
+                books = await queryCatalogService.searchByAuthor(query);
+                if (books.length === 0) {
+                    LoggerService.warn("Catalog author search returned no results, trying vector fallback", { query });
+                    const vectorBooks = await vectorService.searchBooks(query);
+                    if (vectorBooks.length > 0) {
+                        const bookResults = vectorBooks
+                            .map((b: typeof vectorBooks[0]) => {
+                                const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
+                                const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
+                                let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
+                                if (b.subjects) result += `\n**Témata:** ${b.subjects}`;
+                                if (b.description) {
+                                    const shortDesc = b.description.length > 150
+                                        ? b.description.substring(0, 150) + '...'
+                                        : b.description;
+                                    result += `\n${shortDesc}`;
+                                }
+                                return result;
+                            })
+                            .join("\n\n");
+
+                        // Let AI format the response with book results
+                        messages.push(
+                            { role: "assistant", content: null as unknown as string, function_call: message.function_call },
+                            { role: "function", name: "searchCatalog", content: bookResults }
+                        );
+
+                        const followUp = await openai.chat.completions.create({
+                            model: "gpt-5-mini-2025-08-07",
+                            messages,
+                        });
+
+                        return followUp.choices[0].message.content ?? bookResults;
+                    }
+                }
+            } else {
+                books = await queryCatalogService.searchGeneral(query);
+            }
+
+            if (books.length === 0) {
+                return "Nenašel jsem žádné knihy odpovídající vašemu hledání. Zkuste změnit hledaný výraz nebo se zeptejte jinak.";
+            }
+
+            const bookResults = books
+                .map((b) => {
+                    let result = `📘 **[${b.title}](${b.url})** — ${b.author}`;
+                    if (b.year) result += ` (${b.year})`;
+                    if (b.subjects) result += `\n**Témata:** ${b.subjects}`;
+                    if (b.description) {
+                        const shortDesc = b.description.length > 150
+                            ? b.description.substring(0, 150) + '...'
+                            : b.description;
+                        result += `\n${shortDesc}`;
+                    }
+                    return result;
+                })
+                .join("\n\n");
+
+            // Let AI present the results naturally
+            messages.push(
+                { role: "assistant", content: null as unknown as string, function_call: message.function_call },
+                { role: "function", name: "searchCatalog", content: bookResults }
+            );
+
+            const followUp = await openai.chat.completions.create({
+                model: "gpt-5-mini-2025-08-07",
+                messages,
+            });
+
+            return followUp.choices[0].message.content ?? bookResults;
+        }
+
+        if (name === "recommendBooks") {
+            const { query } = JSON.parse(args);
+            LoggerService.logAIFunctionCall("recommendBooks", { query });
+            const books = await vectorService.searchBooks(query);
+
+            const bookResults = books.length
+                ? books
+                      .map((b: typeof books[0]) => {
+                          const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
+                          const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
+                          let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
+                          if (b.subjects) result += `\n**Témata:** ${b.subjects}`;
+                          if (b.description) {
+                              const shortDesc = b.description.length > 150
+                                  ? b.description.substring(0, 150) + '...'
+                                  : b.description;
+                              result += `\n${shortDesc}`;
+                          }
+                          return result;
+                      })
+                      .join("\n\n")
+                : "Nenašel jsem žádné knihy odpovídající vašemu dotazu.";
+
+            messages.push(
+                { role: "assistant", content: null as unknown as string, function_call: message.function_call },
+                { role: "function", name: "recommendBooks", content: bookResults }
+            );
+
+            const followUp = await openai.chat.completions.create({
+                model: "gpt-5-mini-2025-08-07",
+                messages,
+            });
+
+            return followUp.choices[0].message.content ?? bookResults;
+        }
+
+        if (name === "findBookByPlot") {
+            const { plotDescription } = JSON.parse(args);
+            LoggerService.logAIFunctionCall("findBookByPlot", { plotDescription });
+            const books = await vectorService.searchBooks(plotDescription);
+
+            const bookResults = books.length
+                ? books
+                      .map((b: typeof books[0]) => {
+                          const catalogUrl = `https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-${b.id}-Arila/?disprec=2&iset=1`;
+                          const cleanTitle = b.title.replace(/\s*\/\s*$/, '').trim();
+                          let result = `📘 **[${cleanTitle}](${catalogUrl})** — ${b.author}`;
+                          if (b.subjects) result += `\n**Témata:** ${b.subjects}`;
+                          if (b.description) {
+                              const shortDesc = b.description.length > 150
+                                  ? b.description.substring(0, 150) + '...'
+                                  : b.description;
+                              result += `\n${shortDesc}`;
+                          }
+                          return result;
+                      })
+                      .join("\n\n")
+                : "Nenašel jsem žádné knihy odpovídající vašemu popisu.";
+
+            messages.push(
+                { role: "assistant", content: null as unknown as string, function_call: message.function_call },
+                { role: "function", name: "findBookByPlot", content: bookResults }
+            );
+
+            const followUp = await openai.chat.completions.create({
+                model: "gpt-5-mini-2025-08-07",
+                messages,
+            });
+
+            return followUp.choices[0].message.content ?? bookResults;
+        }
+
+        // Handle searchWebsite if chained
+        if (name === "searchWebsite") {
+            const { query, maxResults } = JSON.parse(args);
+            LoggerService.logAIFunctionCall("searchWebsite", { query, maxResults });
+
+            let similarContent: Awaited<ReturnType<typeof searchSimilarContent>> = [];
+            try {
+                similarContent = await searchSimilarContent(query, Math.min(maxResults || 5, 10));
+            } catch (searchError) {
+                LoggerService.warn("ChromaDB unavailable for searchWebsite", {
+                    error: (searchError as Error).message,
+                });
+            }
+
+            const contextText = similarContent.length
+                ? similarContent
+                      .map((item, idx) => `[Zdroj ${idx + 1}: ${item.section}]\nURL: ${item.url}\n${item.text}`)
+                      .join("\n\n")
+                : "Žádný relevantní obsah nebyl nalezen na webu knihovny.";
+
+            messages.push(
+                { role: "assistant", content: null as unknown as string, function_call: message.function_call },
+                { role: "function", name: "searchWebsite", content: contextText }
+            );
+
+            const followUp = await openai.chat.completions.create({
+                model: "gpt-5-mini-2025-08-07",
+                messages,
+            });
+
+            return followUp.choices[0].message.content ?? "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
+        }
+
+        return message.content ?? "Omlouvám se, ale nemohu odpovědět na váš dotaz.";
     },
 };

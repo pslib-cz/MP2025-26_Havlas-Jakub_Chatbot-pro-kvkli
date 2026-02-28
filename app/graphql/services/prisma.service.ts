@@ -31,8 +31,22 @@ export const prismaService = {
     },
 
     // Prompt operations
+    async findPaginatedPrompts(offset: number, limit: number) {
+        return prisma.prompt.findMany({
+            orderBy: { promptId: "desc" },
+            skip: offset,
+            take: limit,
+            include: { conversation: true },
+        });
+    },
+
+    async countPrompts() {
+        return prisma.prompt.count();
+    },
+
     async findAllPrompts() {
         const prompts = await prisma.prompt.findMany({
+            orderBy: { promptId: "desc" },
             include: { conversation: true },
         });
         return prompts || [];

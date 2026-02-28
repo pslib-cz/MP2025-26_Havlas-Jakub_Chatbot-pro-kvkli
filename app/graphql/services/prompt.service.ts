@@ -3,12 +3,35 @@ import { aiService } from "./ai.service";
 import { AddPromptFeedbackArgs } from "../../types";
 import LoggerService from "./logger.service";
 
+const MAX_PROMPTS_PER_CONVERSATION = 10;
+
 export const promptService = {
+    async getReports() {
+        try {
+            const [positive, negative, total] = await Promise.all([
+                prisma.prompt.count({ where: { userFeedback: true } }),
+                prisma.prompt.count({ where: { userFeedback: false } }),
+                prisma.prompt.count(),
+            ]);
+
+            const noFeedback = total - positive - negative;
+
+            LoggerService.info("Reports fetched", { positive, negative, noFeedback, total });
+
+            return { positive, negative, noFeedback, total };
+        } catch (error) {
+            LoggerService.logError(error as Error, "getReports");
+            throw error;
+        }
+    },
+
     async addPrompt({
         promptText,
+        answerText,
         conversationId,
     }: {
         promptText: string;
+        answerText: string;
         conversationId?: number;
     }) {
         try {
@@ -19,15 +42,26 @@ export const promptService = {
                     data: { length: 0 },
                 });
                 convoId = newConvo.conversationId;
-            }
+            } else {
+                // Check conversation prompt limit
+                const promptCount = await prisma.prompt.count({
+                    where: { conversationId: convoId },
+                });
 
-            const answer = await aiService.generateAnswer({ promptText });
+                if (promptCount >= MAX_PROMPTS_PER_CONVERSATION) {
+                    LoggerService.warn("Conversation prompt limit reached", {
+                        conversationId: convoId,
+                        promptCount,
+                    });
+                    throw new Error("CONVERSATION_LIMIT_REACHED");
+                }
+            }
 
             const prompt = await prisma.prompt.create({
                 data: {
                     conversationId: convoId,
                     promptText,
-                    answerText: answer,
+                    answerText: answerText,
                 },
             });
 

@@ -37,14 +37,35 @@ export const typeDefs = gql`
     chunksRemovedFromDB: Int!
   }
 
+  type AuthPayload {
+    token: String!
+  }
+
+  type PaginatedPrompts {
+    prompts: [Prompt!]!
+    totalCount: Int!
+  }
+
+  type Reports {
+    positive: Int!
+    negative: Int!
+    noFeedback: Int!
+    total: Int!
+  }
+
   type Query {
     conversations: [Conversation!]!
     conversation(id: ID!): Conversation
     prompts: [Prompt!]!
+    paginatedPrompts(offset: Int!, limit: Int!): PaginatedPrompts!
     crawlProgress: CrawlProgress!
+    verifyToken: Boolean!
+    heartbeat: Boolean!
+    reports: Reports!
   }
 
   type Mutation {
+    login(username: String!, password: String!): AuthPayload!
     addPrompt(promptText: String!, conversationId: Int): AddPromptResponse!
     addPromptFeedback(
       conversationId: Int!

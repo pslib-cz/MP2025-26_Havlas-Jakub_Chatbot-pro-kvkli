@@ -2,11 +2,38 @@ import { prismaService } from "../services/prisma.service";
 import { aiService } from "../services/ai.service";
 import { AddPromptArgs, AddPromptFeedbackArgs } from "../../types";
 import { promptService } from "graphql/services/prompt.service";
+import { authService } from "../services/auth.service";
+import { GraphQLError } from "graphql";
+
+function requireAuth(context: { token?: string }) {
+    if (!context.token || !authService.verifyToken(context.token)) {
+        throw new GraphQLError("Unauthorized", {
+            extensions: { code: "UNAUTHENTICATED" },
+        });
+    }
+}
 
 export const promptResolvers = {
     Query: {
-        prompts: async () => {
+        prompts: async (_: unknown, __: unknown, context: { token?: string }) => {
+            requireAuth(context);
             return prismaService.findAllPrompts();
+        },
+        paginatedPrompts: async (
+            _: unknown,
+            { offset, limit }: { offset: number; limit: number },
+            context: { token?: string },
+        ) => {
+            requireAuth(context);
+            const [prompts, totalCount] = await Promise.all([
+                prismaService.findPaginatedPrompts(offset, limit),
+                prismaService.countPrompts(),
+            ]);
+            return { prompts, totalCount };
+        },
+        reports: async (_: unknown, __: unknown, context: { token?: string }) => {
+            requireAuth(context);
+            return promptService.getReports();
         },
     },
     Mutation: {
@@ -14,7 +41,6 @@ export const promptResolvers = {
             _: unknown,
             { promptText, conversationId }: AddPromptArgs,
         ) => {
-            // Get conversation history if conversationId exists
             let conversationHistory: Array<{ question: string; answer: string }> = [];
             
             if (conversationId) {
@@ -23,7 +49,6 @@ export const promptResolvers = {
                 );
                 
                 if (conversation?.prompts) {
-                    // Get last 5 exchanges for context (to avoid token limits)
                     conversationHistory = conversation.prompts
                         .slice(-5)
                         .filter(p => p.promptText && p.answerText)
@@ -42,8 +67,9 @@ export const promptResolvers = {
             const { conversationId: newConversationId, prompt } =
                 await promptService.addPrompt({
                     promptText,
+                    answerText,
                     conversationId,
-                });
+                } as any);
 
             return {
                 conversationId: newConversationId,
@@ -62,7 +88,8 @@ export const promptResolvers = {
             });
         },
 
-        deletePrompt: async (_: unknown, { id }: { id: string }) => {
+        deletePrompt: async (_: unknown, { id }: { id: string }, context: { token?: string }) => {
+            requireAuth(context);
             return prismaService.deletePrompt(Number(id));
         },
     },

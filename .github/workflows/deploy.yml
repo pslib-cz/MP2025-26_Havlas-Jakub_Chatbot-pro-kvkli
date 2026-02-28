@@ -68,6 +68,10 @@ jobs:
 
                       cat << 'ENVEOF' > .env
                   ${{ secrets.ENV_FILE }}
+                  JWT_SECRET=${{ secrets.JWT_SECRET }}
+                  API_SECRET=${{ secrets.API_SECRET }}
+                  ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+                  ALLOWED_IPS=${{ secrets.ALLOWED_IPS }}
                   ENVEOF
 
                       # Stop and remove all containers including orphans
