@@ -85,11 +85,35 @@ type ReportsData = {
   };
 };
 
+function stripMarkdown(text: string): string {
+  return text
+    // Remove markdown links: **[text](url)** → text (url)
+    .replace(/\*\*\[([^\]]*)\]\(([^)]*)\)\*\*/g, "$1 ($2)")
+    // Remove remaining markdown links: [text](url) → text (url)
+    .replace(/\[([^\]]*)\]\(([^)]*)\)/g, "$1 ($2)")
+    // Remove bold: **text** → text
+    .replace(/\*\*([^*]*)\*\*/g, "$1")
+    // Remove italic: *text* → text
+    .replace(/\*([^*]*)\*/g, "$1")
+    // Remove heading markers
+    .replace(/^#{1,6}\s+/gm, "")
+    // Normalize bullet points
+    .replace(/^[-•]\s*/gm, "- ")
+    // Collapse multiple newlines
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function escapeCsvField(field: string): string {
-  if (field.includes(",") || field.includes('"') || field.includes("\n")) {
-    return `"${field.replace(/"/g, '""')}"`;
+  // Strip markdown formatting for cleaner CSV
+  let cleaned = stripMarkdown(field);
+  // Replace newlines with a space for single-line CSV cells
+  cleaned = cleaned.replace(/\r?\n/g, " ").replace(/\s{2,}/g, " ");
+  // Escape double quotes and wrap if needed
+  if (cleaned.includes(",") || cleaned.includes('"') || cleaned.includes(";")) {
+    return `"${cleaned.replace(/"/g, '""')}"`;
   }
-  return field;
+  return cleaned;
 }
 
 function createAuthClient(token: string) {
