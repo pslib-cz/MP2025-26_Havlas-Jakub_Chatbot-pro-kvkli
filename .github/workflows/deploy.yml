@@ -47,6 +47,13 @@ jobs:
               run: |
                   mkdir -p ~/.ssh
                   ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+                  cat >> ~/.ssh/config << EOF
+                  Host *
+                    ServerAliveInterval 15
+                    ServerAliveCountMax 20
+                    TCPKeepAlive yes
+                    ConnectTimeout 30
+                  EOF
 
             - name: Ensure target directory exists
               run: |
@@ -59,10 +66,12 @@ jobs:
                     --exclude=.env \
                     app/ \
                     ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/
+                  --delete
 
             - name: Deploy with Docker Compose
               run: |
-                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+                  ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=20 \
+                    ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
                       set -e
                       cd /var/www/apollo
 
@@ -80,8 +89,11 @@ jobs:
                       # Remove any dangling containers with the same names
                       docker rm -f chromadb postgres nextjs_app nginx 2>/dev/null || true
                       
+                      # Prune old images to free disk space and speed up builds
+                      docker image prune -f
+                      
                       # Build and start services
-                      docker compose -f docker-compose.prod.yml build
+                      docker compose -f docker-compose.prod.yml build --progress=plain 2>&1 | tail -n 5
                       docker compose -f docker-compose.prod.yml up -d
                       
                       # Wait for services to be healthy with detailed logging
