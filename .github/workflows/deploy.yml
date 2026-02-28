@@ -68,7 +68,6 @@ jobs:
                     --exclude=logs \
                     app/ \
                     ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/
-                  --delete
 
             - name: Deploy with Docker Compose
               run: |
