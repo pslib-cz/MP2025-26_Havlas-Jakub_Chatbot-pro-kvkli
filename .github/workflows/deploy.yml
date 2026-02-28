@@ -70,6 +70,8 @@ jobs:
                     --exclude=node_modules \
                     --exclude=.env \
                     --exclude=logs \
+                    --exclude=chroma_db \
+                    --exclude=postgres_data \
                     app/ \
                     ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/
 
