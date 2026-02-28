@@ -62,6 +62,7 @@ jobs:
             - name: Sync app files to VPS
               run: |
                   rsync -az \
+                    --delete \
                     --exclude=node_modules \
                     --exclude=.env \
                     app/ \
