@@ -65,6 +65,7 @@ jobs:
                     --delete \
                     --exclude=node_modules \
                     --exclude=.env \
+                    --exclude=logs \
                     app/ \
                     ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/
                   --delete
