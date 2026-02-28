@@ -1,6 +1,6 @@
 import { prismaService } from "../services/prisma.service";
 import { aiService } from "../services/ai.service";
-import { AddPromptArgs, AddPromptFeedbackArgs } from "../../types";
+import { AddPromptArgs, AddPromptFeedbackArgs, PaginatedPromptsArgs, DeletePromptArgs, ConversationHistoryEntry } from "../../types";
 import { promptService } from "graphql/services/prompt.service";
 import { authService } from "../services/auth.service";
 import { GraphQLError } from "graphql";
@@ -21,7 +21,7 @@ export const promptResolvers = {
         },
         paginatedPrompts: async (
             _: unknown,
-            { offset, limit }: { offset: number; limit: number },
+            { offset, limit }: PaginatedPromptsArgs,
             context: { token?: string },
         ) => {
             requireAuth(context);
@@ -41,7 +41,7 @@ export const promptResolvers = {
             _: unknown,
             { promptText, conversationId }: AddPromptArgs,
         ) => {
-            let conversationHistory: Array<{ question: string; answer: string }> = [];
+            let conversationHistory: ConversationHistoryEntry[] = [];
             
             if (conversationId) {
                 const conversation = await prismaService.findConversationById(
@@ -88,9 +88,24 @@ export const promptResolvers = {
             });
         },
 
-        deletePrompt: async (_: unknown, { id }: { id: string }, context: { token?: string }) => {
+        deletePrompt: async (_: unknown, { id }: DeletePromptArgs, context: { token?: string }) => {
             requireAuth(context);
             return prismaService.deletePrompt(Number(id));
+        },
+
+        addConvoFeedback: async (
+            _: unknown,
+            { conversationId, userFeedbackMessage, userFeedback }: {
+                conversationId: number;
+                userFeedbackMessage?: string;
+                userFeedback?: boolean | null;
+            },
+        ) => {
+            return prismaService.updateConversationFeedback(
+                conversationId,
+                userFeedbackMessage,
+                userFeedback ?? null,
+            );
         },
     },
 };

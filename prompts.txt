@@ -384,3 +384,17 @@ Title + Description + (Author OR Contributors): 164835 records (17.58%)
 
 with nullable fields of:
 Subjects
+
+---------------
+
+the page has become quite big try to break it up on components like chatbot.tsx
+then try breaking up the chabtbot again as well. becausse it has become quite bloated as well.
+Also gather all types and add them to this folder.
+
+-----------
+
+instead of creating new object create a type in a new file export it in the index.ts file and use it in the resolver
+
+----------
+
+now go trough all types and check if they are same, if so, merge them and update the imports

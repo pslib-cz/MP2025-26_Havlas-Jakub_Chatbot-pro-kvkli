@@ -6,13 +6,12 @@ import { ChevronRight } from "lucide-react";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { gql } from "@apollo/client";
 import Image from "next/image";
-import { ADD_PROMPT, ADD_PROMPT_FEEDBACK } from "./chatbot/graphql";
-import { AddPromptData, FeedbackData } from "@/types/chatbot";
+import { ADD_PROMPT, ADD_PROMPT_FEEDBACK, ADD_CONVO_FEEDBACK } from "./chatbot/graphql";
 import { WAITING_MESSAGES } from "./chatbot/utils";
 import MessageBubble from "./chatbot/MessageBubble";
 import LoadingIndicator from "./chatbot/LoadingIndicator";
 import ChatInput from "./chatbot/ChatInput";
-
+import type { AddPromptData, FeedbackData } from "./chatbot/types";
 const HEARTBEAT = gql`
   query Heartbeat {
     heartbeat
@@ -42,6 +41,7 @@ export default function Chatbot() {
     >(ADD_PROMPT);
     const [addPromptFeedbackMutation] =
         useMutation<FeedbackData>(ADD_PROMPT_FEEDBACK);
+    const [addConvoFeedbackMutation] = useMutation(ADD_CONVO_FEEDBACK);
 
     const [isOpen, setIsOpen] = useState(false);
     const [input, setInput] = useState("");
@@ -56,6 +56,9 @@ export default function Chatbot() {
         messageIndex: number | null;
     }>({ show: false, messageIndex: null });
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [convoFeedbackSubmitted, setConvoFeedbackSubmitted] = useState(false);
+    const [convoFeedbackMessage, setConvoFeedbackMessage] = useState("");
+    const [convoFeedbackLoading, setConvoFeedbackLoading] = useState(false);
 
     // Check cookie on mount
     useEffect(() => {
@@ -154,6 +157,25 @@ export default function Chatbot() {
         }
     };
 
+    const handleConvoFeedback = async (isPositive: boolean) => {
+        if (!conversationId || convoFeedbackSubmitted) return;
+        setConvoFeedbackLoading(true);
+        try {
+            await addConvoFeedbackMutation({
+                variables: {
+                    conversationId,
+                    userFeedback: isPositive,
+                    userFeedbackMessage: convoFeedbackMessage.trim() || undefined,
+                },
+            });
+            setConvoFeedbackSubmitted(true);
+        } catch (err) {
+            console.error("Error submitting conversation feedback:", err);
+        } finally {
+            setConvoFeedbackLoading(false);
+        }
+    };
+
     return (
         <div className="fixed bottom-6 right-6 z-50 max-sm:bottom-0 max-sm:right-0 max-sm:left-0">
             <motion.button
@@ -210,9 +232,47 @@ export default function Chatbot() {
 
                             {isLoading && <LoadingIndicator messageIndex={waitingMessageIndex} />}
 
-                            {isLimited && (
-                                <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-lg p-3 text-sm text-center">
-                                    ⚠️ Dosáhli jste maximálního počtu zpráv v této konverzaci. Zkuste to znovu za hodinu, nebo nás <a href="https://www.kvkli.cz/kontakt/kontakty-dle-oddeleni" target="_blank" rel="noopener noreferrer" className="underline font-medium hover:text-yellow-900">kontaktujte přímo.</a>.
+                            {isLimited && !convoFeedbackSubmitted && (
+                                <div className="bg-yellow-50 border border-yellow-300 text-yellow-800 rounded-lg p-4 text-sm space-y-3">
+                                    <p className="font-medium">⚠️ Dosáhli jste maximálního počtu zpráv v této konverzaci.</p>
+                                    <p>Jak hodnotíte tuto konverzaci?</p>
+                                    <div className="flex gap-3 justify-center">
+                                        <button
+                                            onClick={() => handleConvoFeedback(true)}
+                                            disabled={convoFeedbackLoading}
+                                            className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center gap-1 disabled:opacity-50 transition-colors"
+                                        >
+                                            👍 Pomohlo mi to
+                                        </button>
+                                        <button
+                                            onClick={() => handleConvoFeedback(false)}
+                                            disabled={convoFeedbackLoading}
+                                            className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center gap-1 disabled:opacity-50 transition-colors"
+                                        >
+                                            👎 Nepomohlo
+                                        </button>
+                                    </div>
+                                    <textarea
+                                        value={convoFeedbackMessage}
+                                        onChange={(e) => setConvoFeedbackMessage(e.target.value)}
+                                        placeholder="Volitelný komentář..."
+                                        className="w-full border border-yellow-300 rounded-lg p-2 text-sm bg-white text-gray-800 resize-none"
+                                        rows={2}
+                                    />
+                                </div>
+                            )}
+
+                            {isLimited && convoFeedbackSubmitted && (
+                                <div className="bg-green-50 border border-green-300 text-green-800 rounded-lg p-3 text-sm text-center">
+                                    ✅ Děkujeme za zpětnou vazbu! Zkuste to znovu za hodinu, nebo nás
+                                    <a
+                                        href="https://www.kvkli.cz/kontakt/kontakty-dle-oddeleni"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline font-medium hover:text-green-900"
+                                    >
+                                        kontaktujte přímo
+                                    </a>.
                                 </div>
                             )}
 

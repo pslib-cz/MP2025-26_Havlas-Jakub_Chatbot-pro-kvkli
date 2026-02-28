@@ -5,63 +5,10 @@ import * as path from "path";
 import OpenAI from "openai";
 import { ChromaClient } from "chromadb";
 import { LoggerService } from "./logger.service";
+import type { BookRecord, MarcDatafield, MarcControlfield, MarcSubfield, MarcRecord, OAIRecord } from "../../types";
 
-// ========================
-// Types
-// ========================
-
-type BookRecord = {
-    Identifier: string;
-    Title: string;
-    Author: string;
-    Contributors: string;
-    Publisher: string;
-    PublicationYear: string;
-    ISBN: string;
-    ISSN: string;
-    Subjects: string;
-    Description: string;
-    Language: string;
-    PhysicalDescription: string;
-    Series: string;
-    Notes: string;
-    RecordType: string;
-    ContentType: string;
-    MediaType: string;
-    CarrierType: string;
-};
-
-type MarcDatafield = {
-    "@_tag": string;
-    "@_ind1"?: string;
-    "@_ind2"?: string;
-    subfield?: MarcSubfield | MarcSubfield[];
-};
-
-type MarcControlfield = {
-    "@_tag": string;
-    "#text": string;
-};
-
-type MarcSubfield = {
-    "@_code": string;
-    "#text": string;
-};
-
-type MarcRecord = {
-    leader?: string;
-    controlfield?: MarcControlfield | MarcControlfield[];
-    datafield?: MarcDatafield | MarcDatafield[];
-};
-
-type OAIRecord = {
-    header?: {
-        identifier?: string;
-    };
-    metadata?: {
-        record?: MarcRecord;
-    };
-};
+// Re-export for consumers importing from this file
+export type { BookRecord, MarcDatafield, MarcControlfield, MarcSubfield, MarcRecord, OAIRecord };
 
 // ========================
 // Configuration

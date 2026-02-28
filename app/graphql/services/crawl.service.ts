@@ -5,55 +5,10 @@ import { parse } from "node-html-parser";
 import type { HTMLElement } from "node-html-parser";
 import LoggerService from "./logger.service";
 import { log, logError } from "../../lib/logger";
+import type { ContentSection, CrawledPage, CrawlProgress, CrawlResult } from "../../types";
 
-const SERVICE = "crawl";
-
-export type ContentSection = {
-    heading: string;
-    level: number;
-    content: string;
-};
-
-export interface CrawledPage {
-    url: string;
-    path: string; // Add path property
-    title: string;
-    language?: string;
-    sections: ContentSection[];
-}
-
-export interface CrawlResponse {
-    success: boolean;
-    message: string;
-    pagesCount: number;
-    outputFile: string;
-}
-
-export interface CrawlProgress {
-    status: "idle" | "running" | "completed" | "error";
-    phase:
-        | "idle"
-        | "crawling"
-        | "chunking"
-        | "diffing"
-        | "updating"
-        | "completed"
-        | "error";
-    pagesVisited: number;
-    pagesInQueue: number;
-    totalPages: number;
-    chunksCreated: number;
-    chunksToAdd: number;
-    chunksToRemove: number;
-    currentUrl: string | null;
-    startTime: number | null;
-    endTime: number | null;
-    error: string | null;
-    embeddingsGenerated: number;
-    embeddingsTotal: number;
-    chunksAddedToDB: number;
-    chunksRemovedFromDB: number;
-}
+export type { ContentSection, CrawledPage, CrawlProgress };
+export type { CrawlResult as CrawlResponse };
 
 // Global progress tracker
 let currentProgress: CrawlProgress = {
@@ -519,7 +474,7 @@ export async function crawlSite(
         delayMs?: number;
         concurrency?: number;
     },
-): Promise<CrawlResponse> {
+): Promise<CrawlResult> {
     const maxPages = options?.maxPages ?? 2000;
     const delayMs = options?.delayMs ?? 1000; // Reduced delay with parallelism
     const concurrency = options?.concurrency ?? 5; // Process 5 pages at once

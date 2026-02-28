@@ -4,15 +4,10 @@ import { vectorService } from "./book.service";
 import { searchSimilarContent } from "./site.service";
 import { queryCatalogService } from "./queryCatalog.service";
 import LoggerService from "./logger.service";
+import type { GenerateAnswerArgs } from "../../types";
 
 export const aiService = {
-    async generateAnswer({ 
-        promptText, 
-        conversationHistory = [] 
-    }: { 
-        promptText: string;
-        conversationHistory?: Array<{ question: string; answer: string }>;
-    }) {
+    async generateAnswer({ promptText, conversationHistory = [] }: GenerateAnswerArgs) {
         try {
             // Get current date and time
             const now = new Date();

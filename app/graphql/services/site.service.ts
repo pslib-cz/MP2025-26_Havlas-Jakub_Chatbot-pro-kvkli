@@ -1,9 +1,9 @@
 import { openai } from "../../lib/openAI";
 import { chroma } from "../../lib/chroma";
-import { Chunk, getChunkId } from "./compare.service";
+import { getChunkId } from "./compare.service";
 import LoggerService from "./logger.service";
 import { updateCrawlProgress } from "./crawl.service";
-
+import type { Chunk } from "../../types";
 const COLLECTION_NAME = "kvkli_content";
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const BATCH_SIZE = 100;

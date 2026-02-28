@@ -1,21 +1,8 @@
 import crypto from "crypto";
-import { CrawledPage } from "./crawl.service";
+import { CrawledPage } from "../../types";
 import { LoggerService } from "./logger.service";
+import type { Chunk, ChunkDiff } from "../../types";
 
-export interface Chunk {
-    url: string;
-    section_heading: string;
-    chunk_index: number;
-    text: string;
-    hash: string;
-    last_crawled: string;
-}
-
-export interface ChunkDiff {
-    chunksToAdd: Chunk[];
-    chunksToRemove: Chunk[];
-    chunksUnchanged: Chunk[];
-}
 
 /**
  * Check if a chunk contains meaningful, indexable content

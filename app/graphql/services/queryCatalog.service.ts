@@ -4,24 +4,13 @@ import axios from "axios";
 import { parse } from "node-html-parser";
 import type { HTMLElement } from "node-html-parser";
 import LoggerService from "./logger.service";
+import type { QueryData, BookResult } from "../../types";
+
 
 const CATALOG_URL = "https://ipac.kvkli.cz/arl-li/cs/vysledky/";
 const BOOK_URL = "https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-";
 
-type QueryData = {
-    typeSearch: "G" | "AU" | "TITLE" | "SUBJECT" | "DATE1" | "PUBL";
-    queryContent: string;
-};
 
-type BookResult = {
-    id: string;
-    title: string;
-    author: string;
-    year?: string;
-    url: string;
-    description?: string;
-    subjects?: string;
-};
 
 export const queryCatalogService = {
     async getBookById(id: string): Promise<BookResult | null> {

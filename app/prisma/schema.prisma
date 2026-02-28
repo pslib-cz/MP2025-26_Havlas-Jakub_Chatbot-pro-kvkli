@@ -16,7 +16,6 @@ model Prompt {
   conversationId  Int
   conversation    Conversation  @relation(fields: [conversationId], references: [conversationId])
   userFeedback    Boolean?
-  // questionType   String?
 }
 
 model Conversation {
@@ -24,5 +23,4 @@ model Conversation {
   prompts                 Prompt[]
   length                  Int
   userFeedback            Boolean?
-  userFeedbackMessage     String?
 }

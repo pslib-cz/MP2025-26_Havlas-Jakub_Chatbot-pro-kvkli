@@ -23,3 +23,13 @@ export const ADD_PROMPT_FEEDBACK = gql`
     }
   }
 `;
+
+export const ADD_CONVO_FEEDBACK = gql`
+  mutation AddConvoFeedback($conversationId: Int!, $userFeedback: Boolean, $userFeedbackMessage: String) {
+    addConvoFeedback(conversationId: $conversationId, userFeedback: $userFeedback, userFeedbackMessage: $userFeedbackMessage) {
+      conversationId
+      userFeedback
+      userFeedbackMessage
+    }
+  }
+`;

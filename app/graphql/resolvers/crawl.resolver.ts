@@ -7,11 +7,12 @@ import {
 import { flattenPagesToChunks, diffChunks } from "../services/compare.service";
 import { fetchExistingChunks, updateVectorDB } from "../services/site.service";
 import { LoggerService } from "../services/logger.service";
+import { CrawlWebsiteArgs, CrawlProgress, CrawlResult } from "../../types";
 
 export const crawlResolvers = {
     Query: {
-        crawlProgress: async () => {
-            const defaultProgress = {
+        crawlProgress: async (): Promise<CrawlProgress> => {
+            const defaultProgress: CrawlProgress = {
                 status: "idle",
                 phase: "idle",
                 pagesVisited: 0,
@@ -31,7 +32,7 @@ export const crawlResolvers = {
             };
 
             try {
-                const progress = getCrawlProgress();
+                const progress = getCrawlProgress() as Partial<CrawlProgress>;
 
                 if (!progress) {
                     return defaultProgress;
@@ -68,7 +69,7 @@ export const crawlResolvers = {
             return stopCrawl();
         },
 
-        crawlWebsite: async (_: unknown, { url }: { url?: string }) => {
+        crawlWebsite: async (_: unknown, { url }: CrawlWebsiteArgs): Promise<CrawlResult> => {
             LoggerService.info("🕷️ Starting crawl pipeline", {
                 url: url || "https://www.kvkli.cz",
             });
@@ -78,7 +79,7 @@ export const crawlResolvers = {
                     LoggerService.info("📡 Initiating website crawl...");
 
                     // Step 1: Crawl website and extract structured content
-                    const crawlResult = await crawlSite(url);
+                    const crawlResult: CrawlResult = await crawlSite(url);
 
                     if (!crawlResult.success) {
                         LoggerService.logError(
@@ -180,8 +181,7 @@ export const crawlResolvers = {
             // Return immediately
             return {
                 success: true,
-                message:
-                    "Crawl started in background. Use crawlProgress query to monitor.",
+                message: "Crawl started in background. Use crawlProgress query to monitor.",
                 pagesCount: 0,
                 outputFile: "",
             };

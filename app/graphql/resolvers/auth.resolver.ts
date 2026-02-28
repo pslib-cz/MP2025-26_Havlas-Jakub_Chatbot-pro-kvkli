@@ -1,4 +1,5 @@
 import { authService } from "../services/auth.service";
+import { LoginArgs } from "../../types";
 import { GraphQLError } from "graphql";
 
 export const authResolvers = {
@@ -15,10 +16,7 @@ export const authResolvers = {
         heartbeat: () => true,
     },
     Mutation: {
-        login: async (
-            _: unknown,
-            { username, password }: { username: string; password: string },
-        ) => {
+        login: async (_: unknown, { username, password }: LoginArgs) => {
             const token = authService.login(username, password);
             if (!token) {
                 throw new GraphQLError("Invalid credentials", {
