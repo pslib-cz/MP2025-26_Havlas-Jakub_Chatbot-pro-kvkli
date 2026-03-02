@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import { log, logError } from "../../lib/logger";
+import LoggerService from "./logger.service";
 
 const SERVICE = "auth";
 const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-change-me";
@@ -7,17 +7,23 @@ const TOKEN_EXPIRY = "8h";
 
 export const authService = {
     login(username: string, password: string): string | null {
-        log(SERVICE, `Login attempt for user="${username}"`);
+        LoggerService.info(`Login attempt for user="${username}"`, {
+            service: SERVICE,
+        });
         const adminUsername = process.env.ADMIN_USERNAME;
         const adminPassword = process.env.ADMIN_PASSWORD;
 
         if (username === adminUsername && password === adminPassword) {
-            log(SERVICE, `Login successful for user="${username}"`);
+            LoggerService.info(`Login successful for user="${username}"`, {
+                service: SERVICE,
+            });
             return jwt.sign({ username, role: "admin" }, JWT_SECRET, {
                 expiresIn: TOKEN_EXPIRY,
             });
         }
-        log(SERVICE, `Login failed for user="${username}"`, "WARN");
+        LoggerService.warn(`Login failed for user="${username}"`, {
+            service: SERVICE,
+        });
         return null;
     },
 
@@ -27,10 +33,17 @@ export const authService = {
                 username: string;
                 role: string;
             };
-            log(SERVICE, `Token verified for user="${decoded.username}"`);
+            LoggerService.info(
+                `Token verified for user="${decoded.username}"`,
+                { service: SERVICE },
+            );
             return decoded;
         } catch (error) {
-            logError(SERVICE, "Token verification failed", error);
+            LoggerService.logError(
+                error as Error,
+                "Token verification failed",
+                { service: SERVICE },
+            );
             return null;
         }
     },

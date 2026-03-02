@@ -16,6 +16,23 @@ export type { LoginArgs } from "./LoginArgs";
 export type { ContentSection } from "./ContentSection";
 export type { CrawledPage } from "./CrawledPage";
 export type { Chunk, ChunkDiff } from "./Chunk";
-export type { BookRecord, MarcSubfield, MarcDatafield, MarcControlfield, MarcRecord, OAIRecord } from "./BookRecord";
+export type {
+    BookRecord,
+    MarcSubfield,
+    MarcDatafield,
+    MarcControlfield,
+    MarcRecord,
+    OAIRecord,
+} from "./BookRecord";
 export type { CatalogQueryType, QueryData, BookResult } from "./CatalogQuery";
-export type { ConversationHistoryEntry, GenerateAnswerArgs } from "./ConversationHistory";
+export type {
+    ConversationHistoryEntry,
+    GenerateAnswerArgs,
+} from "./ConversationHistory";
+export type { BookItem } from "./BookItem";
+export type { SearchCatalogArgs } from "./SearchCatalogArgs";
+export type { RecommendBooksArgs } from "./RecommendBooksArgs";
+export type { FindBookByPlotArgs } from "./FindBookByPlotArgs";
+export type { SearchWebsiteArgs } from "./SearchWebsiteArgs";
+export type { ToolFunctionCall } from "./ToolFunctionCall";
+export type { ToolMessage } from "./ToolMessage";

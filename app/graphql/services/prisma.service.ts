@@ -1,35 +1,49 @@
 import { prisma } from "../../lib/prisma";
-import { log, logError } from "../../lib/logger";
+import LoggerService from "./logger.service";
 
 const SERVICE = "prisma";
 
 export const prismaService = {
     // Conversation operations
     async findAllConversations() {
-        log(SERVICE, "findAllConversations called");
+        LoggerService.info("findAllConversations called", { service: SERVICE });
         try {
             const result = await prisma.conversation.findMany({
                 include: { prompts: true },
             });
-            log(SERVICE, `findAllConversations returned ${result.length} records`);
+            LoggerService.info(
+                `findAllConversations returned ${result.length} records`,
+                { service: SERVICE },
+            );
             return result;
         } catch (error) {
-            logError(SERVICE, "findAllConversations failed", error);
+            LoggerService.logError(
+                error as Error,
+                "findAllConversations failed",
+                { service: SERVICE },
+            );
             throw error;
         }
     },
 
     async findConversationById(id: string) {
-        log(SERVICE, "findConversationById called");
+        LoggerService.info("findConversationById called", { service: SERVICE });
         try {
             const result = await prisma.conversation.findUnique({
                 where: { conversationId: Number(id) },
                 include: { prompts: true },
             });
-            log(SERVICE, `findConversationById returned ${result ? 1 : 0} record`);
+            LoggerService.info(
+                `findConversationById returned ${result ? 1 : 0} record`,
+                { service: SERVICE },
+            );
             return result;
         } catch (error) {
-            logError(SERVICE, "findConversationById failed", error);
+            LoggerService.logError(
+                error as Error,
+                "findConversationById failed",
+                { service: SERVICE },
+            );
             throw error;
         }
     },
@@ -39,7 +53,9 @@ export const prismaService = {
         userFeedbackMessage: string | undefined,
         userFeedback: boolean | null,
     ) {
-        log(SERVICE, "updateConversationFeedback called");
+        LoggerService.info("updateConversationFeedback called", {
+            service: SERVICE,
+        });
         try {
             const result = await prisma.conversation.update({
                 where: { conversationId },
@@ -49,17 +65,24 @@ export const prismaService = {
                 },
                 include: { prompts: true },
             });
-            log(SERVICE, `updateConversationFeedback returned ${result ? 1 : 0} record`);
+            LoggerService.info(
+                `updateConversationFeedback returned ${result ? 1 : 0} record`,
+                { service: SERVICE },
+            );
             return result;
         } catch (error) {
-            logError(SERVICE, "updateConversationFeedback failed", error);
+            LoggerService.logError(
+                error as Error,
+                "updateConversationFeedback failed",
+                { service: SERVICE },
+            );
             throw error;
         }
     },
 
     // Prompt operations
     async findPaginatedPrompts(offset: number, limit: number) {
-        log(SERVICE, "findPaginatedPrompts called");
+        LoggerService.info("findPaginatedPrompts called", { service: SERVICE });
         try {
             const result = await prisma.prompt.findMany({
                 orderBy: { promptId: "desc" },
@@ -67,51 +90,72 @@ export const prismaService = {
                 take: limit,
                 include: { conversation: true },
             });
-            log(SERVICE, `findPaginatedPrompts returned ${result.length} records`);
+            LoggerService.info(
+                `findPaginatedPrompts returned ${result.length} records`,
+                { service: SERVICE },
+            );
             return result;
         } catch (error) {
-            logError(SERVICE, "findPaginatedPrompts failed", error);
+            LoggerService.logError(
+                error as Error,
+                "findPaginatedPrompts failed",
+                { service: SERVICE },
+            );
             throw error;
         }
     },
 
     async countPrompts() {
-        log(SERVICE, "countPrompts called");
+        LoggerService.info("countPrompts called", { service: SERVICE });
         try {
             const result = await prisma.prompt.count();
-            log(SERVICE, `countPrompts returned ${result} records`);
+            LoggerService.info(`countPrompts returned ${result} records`, {
+                service: SERVICE,
+            });
             return result;
         } catch (error) {
-            logError(SERVICE, "countPrompts failed", error);
+            LoggerService.logError(error as Error, "countPrompts failed", {
+                service: SERVICE,
+            });
             throw error;
         }
     },
 
     async findAllPrompts() {
-        log(SERVICE, "findAllPrompts called");
+        LoggerService.info("findAllPrompts called", { service: SERVICE });
         try {
             const result = await prisma.prompt.findMany({
                 orderBy: { promptId: "desc" },
                 include: { conversation: true },
             });
-            log(SERVICE, `findAllPrompts returned ${result.length} records`);
+            LoggerService.info(
+                `findAllPrompts returned ${result.length} records`,
+                { service: SERVICE },
+            );
             return result;
         } catch (error) {
-            logError(SERVICE, "findAllPrompts failed", error);
+            LoggerService.logError(error as Error, "findAllPrompts failed", {
+                service: SERVICE,
+            });
             throw error;
         }
     },
 
     async deletePrompt(id: number) {
-        log(SERVICE, "deletePrompt called");
+        LoggerService.info("deletePrompt called", { service: SERVICE });
         try {
             const result = await prisma.prompt.delete({
                 where: { promptId: Number(id) },
             });
-            log(SERVICE, `deletePrompt returned ${result ? 1 : 0} record`);
+            LoggerService.info(
+                `deletePrompt returned ${result ? 1 : 0} record`,
+                { service: SERVICE },
+            );
             return result.promptId;
         } catch (error) {
-            logError(SERVICE, "deletePrompt failed", error);
+            LoggerService.logError(error as Error, "deletePrompt failed", {
+                service: SERVICE,
+            });
             throw error;
         }
     },

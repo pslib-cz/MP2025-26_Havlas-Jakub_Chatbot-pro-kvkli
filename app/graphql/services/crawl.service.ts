@@ -4,8 +4,12 @@ import axios from "axios";
 import { parse } from "node-html-parser";
 import type { HTMLElement } from "node-html-parser";
 import LoggerService from "./logger.service";
-import { log, logError } from "../../lib/logger";
-import type { ContentSection, CrawledPage, CrawlProgress, CrawlResult } from "../../types";
+import type {
+    ContentSection,
+    CrawledPage,
+    CrawlProgress,
+    CrawlResult,
+} from "../../types";
 
 export type { ContentSection, CrawledPage, CrawlProgress };
 export type { CrawlResult as CrawlResponse };
