@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { ThumbsUp, ThumbsDown } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 const parseMarkdownLinks = (text: string): React.ReactNode => {
     const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
@@ -70,7 +71,19 @@ export default function MessageBubble({
             {answer && (
                 <div className="flex gap-2 items-start justify-start mb-2">
                     <div className="bg-white text-gray-800 rounded-lg p-3 max-w-xs shadow-sm">
-                        {parseMarkdownLinks(answer)}
+                        <div className="prose prose-sm max-w-none">
+                            <ReactMarkdown
+                                components={{
+                                    a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+                                        <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">
+                                            {children}
+                                        </a>
+                                    ),
+                                }}
+                            >
+                                {answer}
+                            </ReactMarkdown>
+                        </div>
 
                         <div className="flex gap-2 mt-2">
                             <button

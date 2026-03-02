@@ -3,6 +3,16 @@ import { CrawledPage } from "../../types";
 import { LoggerService } from "./logger.service";
 import type { Chunk, ChunkDiff } from "../../types";
 
+// Approximate tokens: ~4 chars = 1 token
+const MIN_CHUNK_CHARS = 800; // ~200 tokens
+const MAX_CHUNK_CHARS = 2000; // ~500 tokens
+
+/**
+ * Build a unique string key for a chunk based on its URL, heading, and index
+ */
+function buildChunkKey(chunk: Chunk): string {
+    return `${chunk.url}::${chunk.section_heading}::${chunk.chunk_index}`;
+}
 
 /**
  * Check if a chunk contains meaningful, indexable content
@@ -80,7 +90,7 @@ function isValidChunk(chunk: Chunk): boolean {
         return true;
     }
 
-    return true;
+    return false;
 }
 
 /**
@@ -95,9 +105,8 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
     const chunks: Chunk[] = [];
     const timestamp = new Date().toISOString();
 
-    // Approximate tokens: ~4 chars = 1 token
-    const MIN_CHUNK_CHARS = 800; // ~200 tokens
-    const MAX_CHUNK_CHARS = 2000; // ~500 tokens
+    // Remove the two inline const declarations for MIN_CHUNK_CHARS and MAX_CHUNK_CHARS
+    // (now module-level constants)
 
     for (const page of pages) {
         if (!page.sections || page.sections.length === 0) {
@@ -201,7 +210,9 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
     LoggerService.info("Chunk creation completed", {
         totalChunks: chunks.length,
         pagesProcessed: pages.length,
-        avgChunksPerPage: (chunks.length / pages.length).toFixed(2),
+        avgChunksPerPage: pages.length > 0
+            ? (chunks.length / pages.length).toFixed(2)
+            : "0",
     });
 
     return chunks;
@@ -237,13 +248,13 @@ export function diffChunks(
 
     // Build map of new chunks: key = url + section + chunk_index
     for (const chunk of newChunks) {
-        const key = `${chunk.url}::${chunk.section_heading}::${chunk.chunk_index}`;
+        const key = buildChunkKey(chunk);
         newChunksMap.set(key, chunk);
     }
 
     // Build map of existing chunks
     for (const chunk of existingChunks) {
-        const key = `${chunk.url}::${chunk.section_heading}::${chunk.chunk_index}`;
+        const key = buildChunkKey(chunk);
         existingChunksMap.set(key, chunk);
     }
 
@@ -295,7 +306,7 @@ export function diffChunks(
  * Uses MD5 hash for long IDs to comply with Chroma Cloud's 128-byte limit
  */
 export function getChunkId(chunk: Chunk): string {
-    const fullId = `${chunk.url}::${chunk.section_heading}::${chunk.chunk_index}`;
+    const fullId = buildChunkKey(chunk);
 
     // If ID is short enough, use it directly
     if (fullId.length <= 100) {

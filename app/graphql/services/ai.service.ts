@@ -1,5 +1,5 @@
 import { openai } from "../../lib/openAI";
-import { ChatCompletionMessageParam, ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat";
+import { ChatCompletionMessageParam, ChatCompletionCreateParamsNonStreaming, ChatCompletionMessageToolCall } from "openai/resources/chat";
 import { vectorService } from "./book.service";
 import { searchSimilarContent } from "./site.service";
 import { queryCatalogService } from "./queryCatalog.service";
@@ -13,8 +13,11 @@ import type { GenerateAnswerArgs, BookItem, SearchCatalogArgs, RecommendBooksArg
 type ToolHandler = (
     args: Record<string, unknown>,
     messages: ChatCompletionMessageParam[],
-    functionCall: ToolFunctionCall,
+    toolCallId: string,
+    functionName: string,
 ) => Promise<string>;
+
+type ToolCallFunction = { id: string; function: { name: string; arguments: string } };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -27,7 +30,7 @@ const CATALOG_BASE_URL = "https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat";
 function formatBook(b: BookItem): string {
     const url = b.url ?? `${CATALOG_BASE_URL}-${b.id}-Arila/?disprec=2&iset=1`;
     const title = b.title.replace(/\s*\/\s*$/, "").trim();
-    let result = `📘 **[${title}](${url})** — ${b.author}`;
+    let result = `### 📘 [${title}](${url})\n**Autor:** ${b.author}`;
     if (b.year) result += ` (${b.year})`;
     if (b.subjects) result += `\n**Témata:** ${b.subjects}`;
     if (b.description) {
@@ -41,6 +44,10 @@ function formatBooks(books: BookItem[]): string {
     return books.map(formatBook).join("\n\n");
 }
 
+function formatBooksForPrompt(books: BookItem[]): string {
+    return formatBooks(books);
+}
+
 // ─── OpenAI Abstraction ───────────────────────────────────────────────────────
 
 async function callModel(
@@ -49,8 +56,8 @@ async function callModel(
 ) {
     const body: ChatCompletionCreateParamsNonStreaming = { model: MODEL, messages };
     if (functions) {
-        body.functions = functions;
-        body.function_call = "auto";
+        body.tools = functions.map((fn) => ({ type: "function" as const, function: fn }));
+        body.tool_choice = "auto";
     }
     return openai.chat.completions.create(body);
 }
@@ -59,28 +66,46 @@ async function callModel(
 
 function injectToolResult(
     messages: ChatCompletionMessageParam[],
-    functionCall: ToolFunctionCall,
+    toolCallId: string,
+    functionName: string,
     result: string,
 ): void {
     messages.push(
-        { role: "assistant", content: null as unknown as string, function_call: functionCall },
-        { role: "function", name: functionCall.name, content: result },
+        {
+            role: "assistant",
+            content: null as unknown as string,
+            tool_calls: [{ id: toolCallId, type: "function", function: { name: functionName, arguments: "" } }],
+        },
+        { role: "tool", tool_call_id: toolCallId, content: result },
     );
 }
 
 async function finalizeWithModel(
     messages: ChatCompletionMessageParam[],
-    functionCall: ToolFunctionCall,
+    toolCallId: string,
+    functionName: string,
     content: string,
     fallback: string,
 ): Promise<string> {
-    injectToolResult(messages, functionCall, content);
+    injectToolResult(messages, toolCallId, functionName, content);
     const response = await callModel(messages);
     return response.choices[0].message.content ?? fallback;
 }
 
 function parseToolArgs<T>(raw: string): T {
     return JSON.parse(raw) as T;
+}
+
+// ─── Query Sanitization ───────────────────────────────────────────────────────
+
+function sanitizeQuery(query: string): string {
+    // Remove null bytes and other control characters, normalize whitespace
+    return query.replace(/\x00/g, "").replace(/[\x01-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "").trim();
+}
+
+/** Strip all non-ASCII characters, useful as a catalog search fallback */
+function toAsciiQuery(query: string): string {
+    return query.replace(/[^\x00-\x7F]/g, "").trim();
 }
 
 // ─── Message Builder ──────────────────────────────────────────────────────────
@@ -126,23 +151,26 @@ async function executeSearchWebsite(
 // ─── Tool Handlers ────────────────────────────────────────────────────────────
 
 const toolHandlers: Record<string, ToolHandler> = {
-    async searchCatalog(rawArgs, messages, functionCall) {
-        const { searchType, query } = rawArgs as unknown as SearchCatalogArgs;
+    async searchCatalog(rawArgs, messages, toolCallId, functionName) {
+        const { searchType, query: rawQuery } = rawArgs as unknown as SearchCatalogArgs;
+        const query = sanitizeQuery(rawQuery);
         LoggerService.logAIFunctionCall("searchCatalog", { searchType, query });
 
         if (searchType === "author") {
-            const catalogBooks = await queryCatalogService.searchByAuthor(query);
+            let catalogBooks = await queryCatalogService.searchByAuthor(query);
+
             if (catalogBooks.length === 0) {
-                LoggerService.warn("Catalog author search returned no results, trying vector fallback", { query });
-                const vectorBooks = await vectorService.searchBooks(query);
-                if (vectorBooks.length > 0) {
-                    return finalizeWithModel(messages, functionCall, formatBooks(vectorBooks), formatBooks(vectorBooks));
+                const asciiQuery = toAsciiQuery(query);
+                if (asciiQuery && asciiQuery !== query) {
+                    LoggerService.warn("Author search retrying with ASCII-stripped query", { original: query, ascii: asciiQuery });
+                    catalogBooks = await queryCatalogService.searchByAuthor(asciiQuery);
                 }
             }
+
             if (catalogBooks.length === 0) {
-                return "Nenašel jsem žádné knihy odpovídající vašemu hledání. Zkuste změnit hledaný výraz nebo se zeptejte jinak.";
+                return "Nenašel jsem žádné knihy od tohoto autora v našem katalogu. Zkuste změnit hledaný výraz, například bez diakritiky.";
             }
-            return finalizeWithModel(messages, functionCall, formatBooks(catalogBooks), formatBooks(catalogBooks));
+            return `V našem katalogu jsme nalezli tyto knihy:\n\n${formatBooks(catalogBooks)}`;
         }
 
         const books = searchType === "title"
@@ -152,49 +180,62 @@ const toolHandlers: Record<string, ToolHandler> = {
         if (books.length === 0) {
             return "Nenašel jsem žádné knihy odpovídající vašemu hledání. Zkuste změnit hledaný výraz nebo se zeptejte jinak.";
         }
-        return finalizeWithModel(messages, functionCall, formatBooks(books), formatBooks(books));
+        return `V našem katalogu jsme nalezli tyto knihy:\n\n${formatBooks(books)}`;
     },
 
-    async recommendBooks(rawArgs, messages, functionCall) {
-        const { query } = rawArgs as unknown as RecommendBooksArgs;
+    async recommendBooks(rawArgs, messages, toolCallId, functionName) {
+        const { query: rawQuery } = rawArgs as unknown as RecommendBooksArgs;
+        const query = sanitizeQuery(rawQuery);
         LoggerService.logAIFunctionCall("recommendBooks", { query });
         const books = await vectorService.searchBooks(query);
-        const content = books.length ? formatBooks(books) : "Nenašel jsem žádné knihy odpovídající vašemu dotazu.";
-        return finalizeWithModel(messages, functionCall, content, content);
+        if (!books.length) {
+            return finalizeWithModel(messages, toolCallId, functionName, "Nenašel jsem žádné knihy odpovídající vašemu dotazu.", "Nenašel jsem žádné knihy odpovídající vašemu dotazu.");
+        }
+        return `Doporučuji tyto knihy:\n\n${formatBooks(books)}`;
     },
 
-    async findBookByPlot(rawArgs, messages, functionCall) {
-        const { plotDescription } = rawArgs as unknown as FindBookByPlotArgs;
+    async findBookByPlot(rawArgs, messages, toolCallId, functionName) {
+        const { plotDescription: rawPlot } = rawArgs as unknown as FindBookByPlotArgs;
+        const plotDescription = sanitizeQuery(rawPlot);
         LoggerService.logAIFunctionCall("findBookByPlot", { plotDescription });
         const books = await vectorService.searchBooks(plotDescription);
-        const content = books.length ? formatBooks(books) : "Nenašel jsem žádné knihy odpovídající vašemu popisu.";
-        return finalizeWithModel(messages, functionCall, content, content);
+        if (!books.length) {
+            return finalizeWithModel(messages, toolCallId, functionName, "Nenašel jsem žádné knihy odpovídající vašemu popisu.", "Nenašel jsem žádné knihy odpovídající vašemu popisu.");
+        }
+        return `Nalezl jsem tyto knihy odpovídající vašemu popisu:\n\n${formatBooks(books)}`;
     },
 
-    async searchWebsite(rawArgs, messages, functionCall) {
-        const { query, maxResults } = rawArgs as unknown as SearchWebsiteArgs;
+    async searchWebsite(rawArgs, messages, toolCallId, functionName) {
+        const { query: rawQuery, maxResults } = rawArgs as unknown as SearchWebsiteArgs;
+        const query = sanitizeQuery(rawQuery);
         LoggerService.logAIFunctionCall("searchWebsite", { query, maxResults });
         const { contextText } = await executeSearchWebsite(query, maxResults);
-        return finalizeWithModel(messages, functionCall, contextText, FALLBACK_ANSWER);
+        return finalizeWithModel(messages, toolCallId, functionName, contextText, FALLBACK_ANSWER);
     },
 };
 
 // ─── Tool Dispatcher ──────────────────────────────────────────────────────────
 
 async function dispatchTool(message: ToolMessage, messages: ChatCompletionMessageParam[]): Promise<string> {
-    if (!message.function_call) {
-        return message.content ?? FALLBACK_ANSWER;
+    const anyMsg = message as any;
+    const toolCalls: ChatCompletionMessageToolCall[] | undefined = anyMsg.tool_calls;
+    const rawToolCall = toolCalls?.[0] ?? (message.function_call ? { id: "legacy", function: message.function_call } : null);
+
+    if (!rawToolCall) {
+        return anyMsg.content ?? FALLBACK_ANSWER;
     }
 
-    const { name, arguments: rawArgs } = message.function_call;
+    const toolCall = rawToolCall as { id: string; function: { name: string; arguments: string } };
+    const { name, arguments: rawArgs } = toolCall.function;
+    const toolCallId: string = toolCall.id ?? "legacy";
     const handler = toolHandlers[name];
 
     if (!handler) {
-        return message.content ?? FALLBACK_ANSWER;
+        return anyMsg.content ?? FALLBACK_ANSWER;
     }
 
     const args = parseToolArgs<Record<string, unknown>>(rawArgs);
-    return handler(args, messages, message.function_call);
+    return handler(args, messages, toolCallId, name);
 }
 
 // ─── Main Orchestration ───────────────────────────────────────────────────────
@@ -205,25 +246,27 @@ async function runConversation(
 ): Promise<string> {
     const firstResponse = await callModel(messages, toolDefinitions);
     const firstMessage = firstResponse.choices[0].message;
+    const firstToolCall = firstMessage.tool_calls?.[0] as ToolCallFunction | undefined;
 
-    if (!firstMessage.function_call) {
+    if (!firstToolCall) {
         LoggerService.info("AI response generated", { promptText, hasFunctionCall: false });
         return firstMessage.content ?? FALLBACK_ANSWER;
     }
 
-    if (firstMessage.function_call.name === "searchWebsite") {
-        const { query, maxResults } = parseToolArgs<SearchWebsiteArgs>(firstMessage.function_call.arguments);
+    if (firstToolCall.function.name === "searchWebsite") {
+        const { query, maxResults } = parseToolArgs<SearchWebsiteArgs>(firstToolCall.function.arguments);
         LoggerService.logAIFunctionCall("searchWebsite", { query, maxResults });
 
         const { contextText, sourcesCount } = await executeSearchWebsite(query, maxResults);
 
-        injectToolResult(messages, firstMessage.function_call, contextText);
+        injectToolResult(messages, firstToolCall.id, firstToolCall.function.name, contextText);
 
         const secondResponse = await callModel(messages, toolDefinitions);
         const secondMessage = secondResponse.choices[0].message;
+        const secondToolCall = secondMessage.tool_calls?.[0] as ToolCallFunction | undefined;
 
-        if (secondMessage.function_call) {
-            return dispatchTool(secondMessage, messages);
+        if (secondToolCall) {
+            return dispatchTool(secondMessage as unknown as ToolMessage, messages);
         }
 
         LoggerService.info("AI response generated via searchWebsite", {
@@ -235,7 +278,7 @@ async function runConversation(
         return secondMessage.content ?? FALLBACK_ANSWER;
     }
 
-    return dispatchTool(firstMessage, messages);
+    return dispatchTool(firstMessage as unknown as ToolMessage, messages);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────

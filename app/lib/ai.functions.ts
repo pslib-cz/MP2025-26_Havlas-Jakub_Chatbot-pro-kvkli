@@ -10,7 +10,7 @@ export const toolDefinitions: FunctionDefinition[] = [
     {
         name: "searchCatalog",
         description:
-            "Search the library catalog for specific books by title or author. Use this when user asks for a specific book name or author's works. Fast and accurate for known titles. NOTE: For author names with diacritics or variations (e.g. 'Nesbo', 'Nesbø', 'Jo Nesbø'), always use searchType 'author' and provide the best known form of the name.",
+            "Search the library catalog for specific books by title or author. Use this when user asks for a specific book name or author's works. IMPORTANT: Always use plain ASCII characters without diacritics for author names (e.g. use 'Jo Nesbo' not 'Jo Nesbø', 'Kafka' not 'Kafkä'). This prevents encoding errors.",
         parameters: {
             type: "object",
             properties: {
@@ -22,7 +22,8 @@ export const toolDefinitions: FunctionDefinition[] = [
                 },
                 query: {
                     type: "string",
-                    description: "The book title, author name, or search term",
+                    description:
+                        "The book title, author name, or search term. Use plain ASCII only — no accented or special characters.",
                 },
             },
             required: ["searchType", "query"],
