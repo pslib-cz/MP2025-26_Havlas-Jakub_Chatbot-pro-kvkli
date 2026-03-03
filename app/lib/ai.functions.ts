@@ -10,7 +10,7 @@ export const toolDefinitions: FunctionDefinition[] = [
     {
         name: "searchCatalog",
         description:
-            "Search the library catalog for specific books by title or author. Use this when user asks for a specific book name or author's works. IMPORTANT: Always use plain ASCII characters without diacritics for author names (e.g. use 'Jo Nesbo' not 'Jo Nesbø', 'Kafka' not 'Kafkä'). This prevents encoding errors.",
+            "Search the library catalog for specific books by title or author. Use this when user asks for a specific book name or author's works. IMPORTANT: Always use plain ASCII characters without diacritics for author names (e.g. use 'Jo Nesbo' not 'Jo Nesbø', 'Kafka' not 'Kafkä'). This prevents encoding errors. After receiving results, ALWAYS verify that every returned book actually matches the requested author/title — discard any results that belong to a different author.",
         parameters: {
             type: "object",
             properties: {
@@ -24,6 +24,11 @@ export const toolDefinitions: FunctionDefinition[] = [
                     type: "string",
                     description:
                         "The book title, author name, or search term. Use plain ASCII only — no accented or special characters.",
+                },
+                count: {
+                    type: "number",
+                    description:
+                        "How many books to return. Use exactly what the user requested (e.g. 3 if they said 'give me 3 books'). If the user says 'all', 'všechny', or any similar word meaning all/every, use 20. Defaults to 5 if not specified. Maximum 20.",
                 },
             },
             required: ["searchType", "query"],
@@ -41,6 +46,11 @@ export const toolDefinitions: FunctionDefinition[] = [
                     description:
                         "User request for book recommendations (themes, era, authors, genre, etc.)",
                 },
+                count: {
+                    type: "number",
+                    description:
+                        "How many books to return. Use exactly what the user requested. If the user says 'all', 'všechny', or any similar word meaning all/every, use 20. Defaults to 5 if not specified. Maximum 20.",
+                },
             },
             required: ["query"],
         },
@@ -55,6 +65,11 @@ export const toolDefinitions: FunctionDefinition[] = [
                 plotDescription: {
                     type: "string",
                     description: "Description of the book's plot or story",
+                },
+                count: {
+                    type: "number",
+                    description:
+                        "How many matching books to return. If the user says 'all' or 'všechny', use 20. Defaults to 5 if not specified. Maximum 20.",
                 },
             },
             required: ["plotDescription"],

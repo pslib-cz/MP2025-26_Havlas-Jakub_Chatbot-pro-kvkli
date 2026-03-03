@@ -9,7 +9,8 @@ import type { QueryData, BookResult } from "../../types";
 
 const CATALOG_URL = "https://ipac.kvkli.cz/arl-li/cs/vysledky/";
 const BOOK_URL = "https://ipac.kvkli.cz/arl-li/cs/detail-li_us_cat-";
-
+const PAGE_SIZE = 10; // catalog returns 10 items per page
+const FETCH_ALL = 0;  // sentinel: fetch all available books
 
 
 export const queryCatalogService = {
@@ -70,74 +71,89 @@ export const queryCatalogService = {
         }
     },
 
-    async queryCatalog(data: QueryData): Promise<BookResult[]> {
+    async queryCatalog(data: QueryData, limit = 5): Promise<BookResult[]> {
         const { typeSearch, queryContent } = data;
+        const fetchAll = limit === FETCH_ALL;
         
         try {
-            LoggerService.info("Querying catalog", { typeSearch, queryContent });
-            
-            const url = `${CATALOG_URL}?field=${typeSearch}&term=${encodeURIComponent(queryContent)}&search=Hledat&op=result&zf=&sort=&guide=`;
-            const response = await axios.get(url, {
-                timeout: 10000,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                },
-            });
+            LoggerService.info("Querying catalog", { typeSearch, queryContent, limit: fetchAll ? "all" : limit });
 
-            const html = response.data;
-            const root = parse(html);
+            const seen = new Set<string>();
             const results: BookResult[] = [];
+            let page = 1;
+            let hasMorePages = true;
 
-            // Try multiple selectors for result items
-            const items = root.querySelectorAll(".result-item, .list-item, .record, tr.result");
+            while (hasMorePages) {
+                if (!fetchAll && results.length >= limit) break;
 
-            if (items.length === 0) {
-                LoggerService.warn("No results found in catalog", { typeSearch, queryContent });
-                return [];
-            }
+                const pageUrl = page === 1
+                    ? `${CATALOG_URL}?field=${typeSearch}&term=${encodeURIComponent(queryContent)}&search=Hledat&op=result&zf=&sort=&guide=`
+                    : `${CATALOG_URL}?field=${typeSearch}&term=${encodeURIComponent(queryContent)}&search=Hledat&op=result&zf=&sort=&guide=&pg=${page}`;
 
-            // Fetch detailed info for each result
-            for (let i = 0; i < Math.min(items.length, 5); i++) {
-                const item = items[i];
-                try {
-                    // Extract ID from link
+                const response = await axios.get(pageUrl, {
+                    timeout: 10000,
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                });
+
+                const root = parse(response.data);
+                const items = root.querySelectorAll(".result-item, .list-item, .record, tr.result");
+
+                if (items.length === 0) break;
+                if (items.length < PAGE_SIZE) hasMorePages = false;
+
+                // Collect IDs/fallback data from this page first
+                const pageEntries: Array<{ id: string } | { fallback: BookResult }> = [];
+                for (let i = 0; i < items.length; i++) {
+                    if (!fetchAll && pageEntries.length + results.length >= limit) break;
+                    const item = items[i];
                     const link = item.querySelector("a[href*='detail-li_us_cat']");
                     const href = link?.getAttribute("href") || "";
                     const idMatch = href.match(/detail-li_us_cat-(\d+)/);
-                    
                     if (idMatch) {
-                        const id = idMatch[1];
-                        // Fetch full book details
-                        const bookDetails = await this.getBookById(id);
-                        if (bookDetails) {
-                            results.push(bookDetails);
-                        }
+                        pageEntries.push({ id: idMatch[1] });
                     } else {
-                        // Fallback: parse from search results
                         const title = item.querySelector(".title, .result-title, h3, a")?.text.trim() || "Neznámý název";
                         const author = item.querySelector(".author, .result-author")?.text.trim() || "Neznámý autor";
                         const year = item.querySelector(".year, .result-year, .date")?.text.trim();
-
-                        results.push({
-                            id: `unknown-${i}`,
+                        pageEntries.push({ fallback: {
+                            id: `unknown-${page}-${i}`,
                             title: title.replace(/\s*\/\s*$/, '').trim(),
                             author,
                             year,
                             url: href.startsWith('http') ? href : `https://ipac.kvkli.cz${href}`,
-                        });
+                        } });
                     }
-                } catch (parseError) {
-                    LoggerService.warn("Failed to parse catalog item", { 
-                        error: (parseError as Error).message,
-                        index: i
-                    });
                 }
+
+                // Fetch all book details in parallel
+                const fetchedBooks = await Promise.all(
+                    pageEntries.map(entry =>
+                        'id' in entry
+                            ? this.getBookById(entry.id)
+                            : Promise.resolve(entry.fallback)
+                    )
+                );
+
+                for (const bookDetails of fetchedBooks) {
+                    if (!bookDetails) continue;
+                    const key = `${bookDetails.title.toLowerCase().trim()}|${bookDetails.author.toLowerCase().trim()}`;
+                    if (!seen.has(key)) {
+                        seen.add(key);
+                        results.push(bookDetails);
+                    } else {
+                        LoggerService.info("Skipping duplicate book", { title: bookDetails.title, id: bookDetails.id });
+                    }
+                }
+
+                LoggerService.info("Page fetched", { page, itemsOnPage: items.length, uniqueSoFar: results.length });
+                page++;
             }
 
-            LoggerService.info("Catalog query completed", { 
-                typeSearch, 
-                queryContent, 
-                resultsCount: results.length 
+            LoggerService.info("Catalog query completed", {
+                typeSearch,
+                queryContent,
+                pages: page - 1,
+                resultsCount: results.length,
             });
 
             return results;
@@ -147,15 +163,15 @@ export const queryCatalogService = {
         }
     },
 
-    async searchByTitle(title: string): Promise<BookResult[]> {
-        return this.queryCatalog({ typeSearch: "TITLE", queryContent: title });
+    async searchByTitle(title: string, limit = 5): Promise<BookResult[]> {
+        return this.queryCatalog({ typeSearch: "TITLE", queryContent: title }, limit);
     },
 
-    async searchByAuthor(author: string): Promise<BookResult[]> {
-        return this.queryCatalog({ typeSearch: "AU", queryContent: author });
+    async searchByAuthor(author: string, limit = 5): Promise<BookResult[]> {
+        return this.queryCatalog({ typeSearch: "AU", queryContent: author }, limit);
     },
 
-    async searchGeneral(query: string): Promise<BookResult[]> {
-        return this.queryCatalog({ typeSearch: "G", queryContent: query });
+    async searchGeneral(query: string, limit = 5): Promise<BookResult[]> {
+        return this.queryCatalog({ typeSearch: "G", queryContent: query }, limit);
     },
 };

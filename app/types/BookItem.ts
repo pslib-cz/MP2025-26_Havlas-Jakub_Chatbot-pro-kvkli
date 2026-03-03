@@ -1,9 +1,11 @@
 export type BookItem = {
-    id?: string;
+    id: string;
     title: string;
     author: string;
-    url?: string;
-    year?: string | number;
     subjects?: string;
     description?: string;
+    recordType?: string;
+    notes?: string;
+    url?: string;
+    year?: string;
 };

@@ -19,7 +19,7 @@ const HEARTBEAT = gql`
 `;
 
 const LIMIT_COOKIE_NAME = "chatbot_limited";
-const LIMIT_DURATION_MS = 60 * 60 * 1000; // 1 hour
+const LIMIT_DURATION_MS = 60 * 60 * 1000; 
 
 function setChatbotLimitCookie() {
     const expires = new Date(Date.now() + LIMIT_DURATION_MS).toUTCString();

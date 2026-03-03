@@ -9,8 +9,8 @@ export type BookResult = {
   id: string;
   title: string;
   author: string;
-  year?: string;
-  url: string;
-  description?: string;
   subjects?: string;
+  description?: string;
+  url?: string;
+  year?: string;
 };

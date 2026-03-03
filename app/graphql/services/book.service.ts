@@ -1,6 +1,7 @@
 import { chroma } from "../../lib/chroma";
 import { openai } from "../../lib/openAI";
 import LoggerService from "./logger.service";
+import type { BookItem } from "../../types";
 
 //Četl jsem knihu o mašinkách, mohl bys mi doporučit nějaké další knížký o vlacích?
 
@@ -63,7 +64,7 @@ export const vectorService = {
     /**
      * Searches the "books" vector collection using OpenAI embeddings + Chroma.
      */
-    async searchBooks(query: string) {
+    async searchBooks(query: string, limit = 5) {
         try {
             // Add timeout to fail fast
             const collection = await Promise.race([
@@ -92,7 +93,7 @@ export const vectorService = {
             // Perform vector search
             const result = await collection.query({
                 queryEmbeddings: [queryEmbedding],
-                nResults: 5,
+                nResults: Math.min(limit, 20),
             });
 
             const docs = result.documents?.[0] || [];
@@ -109,10 +110,11 @@ export const vectorService = {
                     description: parsed.description,
                     recordType: parsed.recordType,
                     notes: parsed.notes,
-                };
+                    url: "",
+                } as BookItem;
             });
             console.log("Book search results:", books);
-            LoggerService.info("Book search executed", { query, resultsCount: books.length });
+            LoggerService.info("Book search executed", { query, limit, resultsCount: books.length });
 
             return books;
         } catch (err) {
