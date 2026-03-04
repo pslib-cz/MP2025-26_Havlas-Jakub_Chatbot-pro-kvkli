@@ -1,12 +1,12 @@
 import { openai } from "../../lib/openAI";
-import { ChatCompletionMessageParam, ChatCompletionCreateParamsNonStreaming, ChatCompletionMessageToolCall } from "openai/resources/chat";
+import { ChatCompletionMessageParam, ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat";
 import { vectorService } from "./book.service";
 import { searchSimilarContent } from "./site.service";
 import { queryCatalogService } from "./queryCatalog.service";
 import LoggerService from "./logger.service";
 import { buildSystemPrompt } from "../../lib/ai.prompt";
 import { type FunctionDefinition, toolDefinitions } from "../../lib/ai.functions";
-import type { GenerateAnswerArgs, BookItem, SearchCatalogArgs, RecommendBooksArgs, FindBookByPlotArgs, SearchWebsiteArgs, ToolFunctionCall, ToolMessage } from "../../types";
+import type { GenerateAnswerArgs, BookItem, SearchCatalogArgs, RecommendBooksArgs, FindBookByPlotArgs, SearchWebsiteArgs, ToolMessage } from "../../types";
 
 // ─── Internal Types ───────────────────────────────────────────────────────────
 
@@ -254,7 +254,7 @@ function filterByAuthor(books: BookItem[], requestedAuthor: string): BookItem[] 
 // ─── Tool Handlers ────────────────────────────────────────────────────────────
 
 const toolHandlers: Record<string, ToolHandler> = {
-    async searchCatalog(rawArgs, messages, toolCallId, functionName) {
+    async searchCatalog(rawArgs) {
         const { searchType, query: rawQuery, count } = rawArgs as unknown as SearchCatalogArgs;
         const query = sanitizeQuery(rawQuery);
         const wantsAll = count != null && count >= MAX_COUNT;
@@ -343,12 +343,11 @@ const toolHandlers: Record<string, ToolHandler> = {
 // ─── Tool Dispatcher ──────────────────────────────────────────────────────────
 
 async function dispatchTool(message: ToolMessage, messages: ChatCompletionMessageParam[]): Promise<string> {
-    const anyMsg = message as any;
-    const toolCalls: ChatCompletionMessageToolCall[] | undefined = anyMsg.tool_calls;
+    const toolCalls = message.tool_calls ?? undefined;
     const rawToolCall = toolCalls?.[0] ?? (message.function_call ? { id: "legacy", function: message.function_call } : null);
 
     if (!rawToolCall) {
-        return anyMsg.content ?? FALLBACK_ANSWER;
+        return message.content ?? FALLBACK_ANSWER;
     }
 
     const toolCall = rawToolCall as { id: string; function: { name: string; arguments: string } };
@@ -357,7 +356,7 @@ async function dispatchTool(message: ToolMessage, messages: ChatCompletionMessag
     const handler = toolHandlers[name];
 
     if (!handler) {
-        return anyMsg.content ?? FALLBACK_ANSWER;
+        return message.content ?? FALLBACK_ANSWER;
     }
 
     const args = parseToolArgs<Record<string, unknown>>(rawArgs);
@@ -392,7 +391,7 @@ async function runConversation(
         const secondToolCall = secondMessage.tool_calls?.[0] as ToolCallFunction | undefined;
 
         if (secondToolCall) {
-            return dispatchTool(secondMessage as unknown as ToolMessage, messages);
+            return dispatchTool(secondMessage as ToolMessage, messages);
         }
 
         LoggerService.info("AI response generated via searchWebsite", {
@@ -404,7 +403,7 @@ async function runConversation(
         return secondMessage.content ?? FALLBACK_ANSWER;
     }
 
-    return dispatchTool(firstMessage as unknown as ToolMessage, messages);
+    return dispatchTool(firstMessage as ToolMessage, messages);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
