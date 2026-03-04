@@ -49,7 +49,6 @@ export const prismaService = {
                 where: { conversationId },
                 data: {
                     userFeedback,
-                    userFeedbackMessage,
                 },
                 include: { prompts: true },
             });
