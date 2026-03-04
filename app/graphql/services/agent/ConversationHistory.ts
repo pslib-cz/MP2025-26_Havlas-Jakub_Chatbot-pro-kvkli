@@ -96,9 +96,25 @@ export class ConversationHistory {
      * non-system messages. The system message is always included first.
      */
     getMessages(lastN?: number): ChatCompletionMessageParam[] {
-        const messages = !lastN
+        const raw = !lastN
             ? [this.systemMessage, ...this.messages]
             : [this.systemMessage, ...this.messages.slice(-lastN)];
+
+        // Strip legacy `role: "function"` messages — deprecated OpenAI format.
+        // These should never be created by the current code, but old persisted
+        // conversation data could theoretically contain them.
+        const messages = raw.filter((msg) => {
+            const role = (msg as unknown as Record<string, unknown>)
+                .role as string;
+            if (role === "function") {
+                console.error(
+                    "[ConversationHistory] Dropping legacy 'function' role message — " +
+                        "use role: 'tool' with tool_call_id instead.",
+                );
+                return false;
+            }
+            return true;
+        });
 
         // Validate and sanitize message sequence
         this.validateMessageSequence(messages);

@@ -44,7 +44,8 @@ function parseEmbeddingDocument(doc: string | null) {
     const finalAuthor = author || contributors || "Neznámý autor";
 
     // Fix weird data issues ("nan", "none")
-    const isInvalid = (val: string) => !val || val.toLowerCase() === "nan" || val.toLowerCase() === "none";
+    const isInvalid = (val: string) =>
+        !val || val.toLowerCase() === "nan" || val.toLowerCase() === "none";
 
     return {
         title: isInvalid(title) ? "Neznámý název" : title,
@@ -67,12 +68,15 @@ export const vectorService = {
     async searchBooks(query: string, limit = 5) {
         try {
             // Add timeout to fail fast
-            const collection = await Promise.race([
+            const collection = (await Promise.race([
                 chroma.getCollection({ name: "books" }),
                 new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error("ChromaDB timeout")), 5000)
-                )
-            ]) as Awaited<ReturnType<typeof chroma.getCollection>>;
+                    setTimeout(
+                        () => reject(new Error("ChromaDB timeout")),
+                        5000,
+                    ),
+                ),
+            ])) as Awaited<ReturnType<typeof chroma.getCollection>>;
             if (!collection) {
                 console.warn("⚠️ Collection 'books' does not exist.");
                 return [];
@@ -85,7 +89,6 @@ export const vectorService = {
             const embeddingRes = await openai.embeddings.create({
                 model: "text-embedding-3-small",
                 input: rewritten,
-
             });
 
             const queryEmbedding = embeddingRes.data[0].embedding;
@@ -114,12 +117,33 @@ export const vectorService = {
                 } as BookItem;
             });
             console.log("Book search results:", books);
-            LoggerService.info("Book search executed", { query, limit, resultsCount: books.length });
+            LoggerService.info("Book search executed", {
+                query,
+                limit,
+                resultsCount: books.length,
+            });
 
             return books;
         } catch (err) {
-            LoggerService.logError(err as Error, "searchBooks", { query });
-            LoggerService.warn("ChromaDB unavailable, returning empty results");
+            const error = err as Error;
+            // ChromaNotFoundError means the 'books' collection hasn't been
+            // populated yet — this is expected on a fresh deployment.
+            if (
+                error.name === "ChromaNotFoundError" ||
+                error.message?.includes("could not be found") ||
+                error.message?.includes("does not exist")
+            ) {
+                LoggerService.warn(
+                    "Books vector collection not found in ChromaDB — " +
+                        "run the vectorization script to populate it.",
+                    { query },
+                );
+            } else {
+                LoggerService.logError(error, "searchBooks", { query });
+                LoggerService.warn(
+                    "ChromaDB unavailable, returning empty results",
+                );
+            }
             return [];
         }
     },
