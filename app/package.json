@@ -43,7 +43,8 @@
         "react-dom": "^19.1.0",
         "react-markdown": "^10.1.0",
         "recharts": "^3.5.0",
-        "rxjs": "^7.8.2"
+        "rxjs": "^7.8.2",
+        "zod": "^3.25.76"
     },
     "devDependencies": {
         "@eslint/eslintrc": "^3",
