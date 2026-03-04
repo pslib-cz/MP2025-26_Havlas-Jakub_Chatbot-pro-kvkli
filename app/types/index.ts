@@ -41,3 +41,4 @@ export type { ToolFunctionCall } from "./ToolFunctionCall";
 export type { ToolMessage } from "./ToolMessage";
 export type { ToolHandler } from "./ToolHandler";
 export type { ToolCallFunction } from "./ToolCallFunction";
+export type { Contact } from "./Contact";

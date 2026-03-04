@@ -4,19 +4,12 @@ import { z } from "zod";
 import type { ChatCompletionTool } from "openai/resources/chat";
 import { ToolRegistry } from "./ToolRegistry";
 import { DEFAULT_COUNT, MAX_COUNT, FETCH_ALL_COUNT } from "./constants";
-import {
-    sanitizeInput,
-    normalizeCount,
-    toAsciiOnly,
-} from "./preprocessing";
-import {
-    formatBooks,
-    filterByAuthor,
-    ensureBookUrls,
-} from "./formatting";
+import { sanitizeInput, normalizeCount, toAsciiOnly } from "./preprocessing";
+import { formatBooks, filterByAuthor, ensureBookUrls } from "./formatting";
 import { vectorService } from "../book.service";
 import { searchSimilarContent } from "../site.service";
 import { queryCatalogService } from "../queryCatalog.service";
+import { contactService } from "../contact.service";
 import LoggerService from "../logger.service";
 import type { BookItem } from "../../../types";
 
@@ -42,6 +35,16 @@ const SearchWebsiteSchema = z.object({
     query: z.string().min(1),
     maxResults: z.number().optional(),
 });
+
+const GetContactSchema = z
+    .object({
+        name: z.string().optional(),
+        role: z.string().optional(),
+        department: z.string().optional(),
+    })
+    .refine((d) => d.name || d.role || d.department, {
+        message: "At least one search parameter is required",
+    });
 
 // ─── OpenAI Function Specs ────────────────────────────────────────────────────
 
@@ -150,6 +153,35 @@ const searchWebsiteSpec: ChatCompletionTool = {
     },
 };
 
+const getContactSpec: ChatCompletionTool = {
+    type: "function",
+    function: {
+        name: "getContact",
+        description:
+            "Look up contact information for library staff or departments. Use this when the user asks for a phone number, email, or contact details of a person or department. Provide at least one search parameter.",
+        parameters: {
+            type: "object",
+            properties: {
+                name: {
+                    type: "string",
+                    description:
+                        "Full or partial name of the person or department (e.g. 'Vohlídalová', 'Studijní knihovna')",
+                },
+                role: {
+                    type: "string",
+                    description:
+                        "Role or position (e.g. 'ředitelka', 'náměstek')",
+                },
+                department: {
+                    type: "string",
+                    description:
+                        "Department name (e.g. 'IT', 'Ředitelství', 'Dětské oddělení')",
+                },
+            },
+        },
+    },
+};
+
 // ─── Tool Handlers ────────────────────────────────────────────────────────────
 
 async function handleSearchCatalog(
@@ -239,16 +271,12 @@ async function handleRecommendBooks(
 
     LoggerService.logAIFunctionCall("recommendBooks", { query, limit });
 
-    const books = (await vectorService.searchBooks(
-        query,
-        limit,
-    )) as BookItem[];
+    const books = (await vectorService.searchBooks(query, limit)) as BookItem[];
 
     if (books.length === 0) {
         return JSON.stringify({
             status: "no_results",
-            message:
-                "Nenašel jsem žádné knihy odpovídající vašemu dotazu.",
+            message: "Nenašel jsem žádné knihy odpovídající vašemu dotazu.",
         });
     }
 
@@ -311,8 +339,7 @@ async function handleSearchWebsite(
     if (similarContent.length === 0) {
         return JSON.stringify({
             status: "no_results",
-            message:
-                "Žádný relevantní obsah nebyl nalezen na webu knihovny.",
+            message: "Žádný relevantní obsah nebyl nalezen na webu knihovny.",
         });
     }
 
@@ -327,6 +354,32 @@ async function handleSearchWebsite(
         status: "ok",
         sourcesCount: sources.length,
         sources,
+    });
+}
+
+async function handleGetContact(
+    args: z.infer<typeof GetContactSchema>,
+): Promise<string> {
+    LoggerService.logAIFunctionCall("getContact", args);
+
+    const matches = contactService.search({
+        name: args.name,
+        role: args.role,
+        department: args.department,
+    });
+
+    if (matches.length === 0) {
+        return JSON.stringify({
+            status: "no_results",
+            matches: [],
+            message:
+                "Nepodařilo se najít žádný kontakt odpovídající zadaným kritériím.",
+        });
+    }
+
+    return JSON.stringify({
+        status: "ok",
+        matches,
     });
 }
 
@@ -361,6 +414,12 @@ export function createToolRegistry(): ToolRegistry {
         searchWebsiteSpec,
         SearchWebsiteSchema,
         handleSearchWebsite,
+    );
+    registry.register(
+        "getContact",
+        getContactSpec,
+        GetContactSchema,
+        handleGetContact,
     );
 
     return registry;

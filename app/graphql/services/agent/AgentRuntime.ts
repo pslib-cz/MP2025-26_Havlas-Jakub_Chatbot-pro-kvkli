@@ -5,11 +5,7 @@ import type { ChatCompletionMessageFunctionToolCall } from "openai/resources/cha
 import { ConversationHistory } from "./ConversationHistory";
 import { ToolRegistry } from "./ToolRegistry";
 import { chatCompletion } from "./OpenAIClient";
-import {
-    MODEL,
-    MAX_TOOL_ITERATIONS,
-    FALLBACK_ANSWER,
-} from "./constants";
+import { MODEL, MAX_TOOL_ITERATIONS, FALLBACK_ANSWER } from "./constants";
 import LoggerService from "../logger.service";
 
 export interface AgentRuntimeOptions {
@@ -114,7 +110,21 @@ export class AgentRuntime {
                     this.fallback,
                 );
 
+                LoggerService.debug("AgentRuntime: tool result received", {
+                    tool: name,
+                    resultLength: result.length,
+                    resultPreview: result.substring(0, 100),
+                });
+
                 history.addToolResult(toolCall.id, result);
+
+                LoggerService.debug(
+                    "AgentRuntime: tool result added to history",
+                    {
+                        tool: name,
+                        totalMessages: history.length,
+                    },
+                );
             }
         }
 

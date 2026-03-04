@@ -43,7 +43,10 @@ export function toAsciiOnly(value: string): string {
  * Lowercase and strip non-alphanumeric characters for loose comparison.
  */
 export function normalizeForComparison(value: string): string {
-    return value.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+    return value
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, "")
+        .trim();
 }
 
 /**

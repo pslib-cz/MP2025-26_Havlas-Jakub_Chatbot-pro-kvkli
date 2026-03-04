@@ -27,8 +27,7 @@ export class ConversationHistory {
 
     constructor(config: ConversationHistoryConfig = {}) {
         const systemPrompt = config.systemPrompt ?? DEFAULT_SYSTEM_PROMPT;
-        this.maxMessages =
-            config.maxMessages ?? DEFAULT_MAX_HISTORY_MESSAGES;
+        this.maxMessages = config.maxMessages ?? DEFAULT_MAX_HISTORY_MESSAGES;
         this.systemMessage = { role: "system", content: systemPrompt };
     }
 
@@ -62,11 +61,33 @@ export class ConversationHistory {
 
     /** Append a tool result message */
     addToolResult(toolCallId: string, content: string): void {
-        this.messages.push({
-            role: "tool",
+        if (!toolCallId) {
+            throw new Error("toolCallId is required for tool messages");
+        }
+        if (typeof content !== "string") {
+            throw new Error(
+                `Tool result content must be a string, got ${typeof content}`,
+            );
+        }
+
+        // Ensure content is valid UTF-8 and doesn't contain problematic characters
+        const sanitizedContent = content
+            .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F]/g, "") // Remove control characters except LF
+            .trim();
+
+        if (!sanitizedContent) {
+            throw new Error(
+                "Tool result content cannot be empty after sanitization",
+            );
+        }
+
+        const toolMessage = {
+            role: "tool" as const,
             tool_call_id: toolCallId,
-            content,
-        } as ChatCompletionMessageParam);
+            content: sanitizedContent,
+        };
+
+        this.messages.push(toolMessage as ChatCompletionMessageParam);
         this.trimIfNeeded();
     }
 
@@ -75,10 +96,15 @@ export class ConversationHistory {
      * non-system messages. The system message is always included first.
      */
     getMessages(lastN?: number): ChatCompletionMessageParam[] {
-        if (!lastN) {
-            return [this.systemMessage, ...this.messages];
-        }
-        return [this.systemMessage, ...this.messages.slice(-lastN)];
+        const messages = !lastN
+            ? [this.systemMessage, ...this.messages]
+            : [this.systemMessage, ...this.messages.slice(-lastN)];
+
+        // Validate and sanitize message sequence
+        this.validateMessageSequence(messages);
+
+        // Ensure messages are properly typed
+        return messages.map((msg) => this.sanitizeMessage(msg));
     }
 
     /**
@@ -103,8 +129,9 @@ export class ConversationHistory {
     /** Reset conversation, preserving or replacing the system prompt */
     clear(newSystemPrompt?: string): void {
         if (newSystemPrompt) {
-            (this.systemMessage as { role: "system"; content: string }).content =
-                newSystemPrompt;
+            (
+                this.systemMessage as { role: "system"; content: string }
+            ).content = newSystemPrompt;
         }
         this.messages = [];
     }
@@ -115,6 +142,98 @@ export class ConversationHistory {
     }
 
     // ── Internal ──────────────────────────────────────────────────────────
+
+    /**
+     * Ensure message is properly typed and doesn't contain invalid fields
+     */
+    private sanitizeMessage(
+        msg: ChatCompletionMessageParam,
+    ): ChatCompletionMessageParam {
+        // Simply return the message - it's already been properly validated
+        // Just ensure that deprecated fields don't exist
+        const cleaned = structuredClone(msg);
+        const cleanedObj = cleaned as unknown as Record<string, unknown>;
+        delete cleanedObj["function_call"];
+        delete cleanedObj["function"];
+
+        return cleaned;
+    }
+
+    /**
+     * Validate message sequence to ensure OpenAI API compatibility
+     */
+    private validateMessageSequence(
+        messages: ChatCompletionMessageParam[],
+    ): void {
+        if (messages.length < 2) return; // Only system and maybe one message
+
+        let expectTools = false;
+        for (let i = 0; i < messages.length; i++) {
+            const msg = messages[i] as unknown as Record<string, unknown>;
+            const role = msg.role as string;
+
+            // Validate role types
+            if (!["system", "user", "assistant", "tool"].includes(role)) {
+                console.error(
+                    `Invalid role at message ${i}: "${role}". Valid roles: system, user, assistant, tool.`,
+                );
+            }
+
+            // Validate that tool messages follow (directly or via other tool messages)
+            // an assistant message that contains tool_calls.
+            if (role === "tool") {
+                if (i === 0) {
+                    console.error("Tool message cannot be the first message");
+                }
+                // Walk backwards past any consecutive tool messages to find the
+                // responsible assistant message.
+                let prevAssistantIndex = i - 1;
+                while (prevAssistantIndex >= 0) {
+                    const r = (
+                        messages[prevAssistantIndex] as unknown as Record<
+                            string,
+                            unknown
+                        >
+                    ).role as string;
+                    if (r !== "tool") break;
+                    prevAssistantIndex--;
+                }
+                const prevAssistant =
+                    prevAssistantIndex >= 0
+                        ? (messages[prevAssistantIndex] as unknown as Record<
+                              string,
+                              unknown
+                          >)
+                        : undefined;
+                if (!prevAssistant || prevAssistant.role !== "assistant") {
+                    console.error(
+                        `Tool message at index ${i} must follow an assistant message. Nearest non-tool message role: ${
+                            prevAssistant?.role
+                        }`,
+                    );
+                }
+                const toolCalls = prevAssistant?.tool_calls as
+                    | unknown[]
+                    | undefined;
+                if (!toolCalls || toolCalls.length === 0) {
+                    console.error(
+                        `Tool message at index ${i} follows an assistant message without tool_calls`,
+                    );
+                }
+            }
+
+            // Track if we just had tool calls
+            const toolCalls = msg.tool_calls as unknown[] | undefined;
+            if (role === "assistant" && (toolCalls?.length ?? 0) > 0) {
+                expectTools = true;
+            } else if (role === "tool") {
+                expectTools = false;
+            } else if (role !== "tool" && expectTools) {
+                // After tool_calls, we should see tool messages, not user/assistant
+                expectTools = false;
+            }
+        }
+    }
 
     private trimIfNeeded(): void {
         if (this.messages.length > this.maxMessages) {

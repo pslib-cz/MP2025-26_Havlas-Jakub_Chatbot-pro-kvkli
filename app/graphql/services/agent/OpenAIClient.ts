@@ -29,7 +29,19 @@ export async function chatCompletion(
 ): Promise<ChatCompletion> {
     const { model = MODEL, messages, tools } = options;
 
-    const body: ChatCompletionCreateParamsNonStreaming = { model, messages };
+    // Validate message structure to prevent API errors
+    validateMessages(messages);
+
+    // Convert messages to plain objects to ensure proper serialization
+    const serializedMessages = messages.map(m => {
+        const obj = JSON.parse(JSON.stringify(m));
+        return obj as ChatCompletionMessageParam;
+    });
+
+    const body: ChatCompletionCreateParamsNonStreaming = { 
+        model, 
+        messages: serializedMessages,
+    };
 
     if (tools && tools.length > 0) {
         body.tools = tools;
@@ -40,14 +52,66 @@ export async function chatCompletion(
         model,
         messageCount: messages.length,
         toolCount: tools?.length ?? 0,
+        messageRoles: messages.map((m) => (m as unknown as Record<string, unknown>).role as string).join(", "),
     });
 
-    const response = await openai.chat.completions.create(body);
+    try {
+        const response = await openai.chat.completions.create(body);
 
-    LoggerService.debug("OpenAI response", {
-        finishReason: response.choices[0]?.finish_reason,
-        hasToolCalls: (response.choices[0]?.message.tool_calls?.length ?? 0) > 0,
+        LoggerService.debug("OpenAI response", {
+            finishReason: response.choices[0]?.finish_reason,
+            hasToolCalls:
+                (response.choices[0]?.message.tool_calls?.length ?? 0) > 0,
+        });
+
+        return response;
+    } catch (error) {
+        // Log detailed message structure on error for debugging
+        LoggerService.warn("OpenAI API error - message structure:", {
+            messageCount: messages.length,
+            model,
+            messages: messages.map((m, i) => {
+                const msg = m as unknown as Record<string, unknown>;
+                return {
+                    index: i,
+                    role: msg.role,
+                    hasContent: !!msg.content,
+                    hasToolCalls: !!msg.tool_calls,
+                    hasToolCallId: !!msg.tool_call_id,
+                    keys: Object.keys(msg),
+                };
+            }),
+        });
+        throw error;
+    }
+}
+
+/**
+ * Validate that messages have proper structure before sending to OpenAI
+ */
+function validateMessages(messages: ChatCompletionMessageParam[]): void {
+    const validRoles = new Set(["system", "user", "assistant", "tool"]);
+    
+    messages.forEach((msg: unknown, index: number) => {
+        const m = msg as unknown as Record<string, unknown>;
+        if (!m.role || !validRoles.has(m.role as string)) {
+            throw new Error(
+                `Invalid message role at index ${index}: ${m.role}. Valid roles are: system, user, assistant, tool`
+            );
+        }
+        
+        // tool messages must have tool_call_id
+        if (m.role === "tool" && !m.tool_call_id) {
+            throw new Error(
+                `Tool message at index ${index} must have 'tool_call_id' property`
+            );
+        }
+        
+        // Ensure no deprecated fields
+        if (m.function_call || m.function) {
+            throw new Error(
+                `Deprecated function calling format found at index ${index}. Use tool_calls instead.`
+            );
+        }
     });
-
-    return response;
 }

@@ -52,7 +52,9 @@ export class ToolRegistry {
     ): Promise<string> {
         const definition = this.tools.get(name);
         if (!definition) {
-            LoggerService.warn("ToolRegistry: unknown tool requested", { name });
+            LoggerService.warn("ToolRegistry: unknown tool requested", {
+                name,
+            });
             return fallback;
         }
 
@@ -74,9 +76,13 @@ export class ToolRegistry {
         try {
             return await definition.handler(parsed);
         } catch (error) {
-            LoggerService.logError(error as Error, `ToolRegistry.execute(${name})`, {
-                args: rawArgs,
-            });
+            LoggerService.logError(
+                error as Error,
+                `ToolRegistry.execute(${name})`,
+                {
+                    args: rawArgs,
+                },
+            );
             return fallback;
         }
     }

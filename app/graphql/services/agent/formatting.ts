@@ -13,9 +13,7 @@ import LoggerService from "../logger.service";
  * Build a catalog URL for a book item.
  */
 function buildBookUrl(book: BookItem): string {
-    return (
-        book.url || `${CATALOG_BASE_URL}-${book.id}-Arila/?disprec=2&iset=1`
-    );
+    return book.url || `${CATALOG_BASE_URL}-${book.id}-Arila/?disprec=2&iset=1`;
 }
 
 /** Clean trailing slashes and whitespace from a title */
@@ -26,10 +24,7 @@ function cleanTitle(title: string): string {
 /**
  * Compact single-line format: `- [Title](url) — Author`
  */
-function formatBookCompact(
-    book: BookItem,
-    omitAuthor: boolean,
-): string {
+function formatBookCompact(book: BookItem, omitAuthor: boolean): string {
     const url = buildBookUrl(book);
     const title = cleanTitle(book.title);
     const author = stripAuthorRole(book.author);
