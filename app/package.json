@@ -16,7 +16,8 @@
         "docker:dev": "docker compose -f docker-compose.dev.yml up",
         "docker:dev:stop": "docker compose -f docker-compose.dev.yml down",
         "docker:prod": "docker compose -f docker-compose.prod.yml up -d",
-        "cleanup-logs": "tsx app/scripts/cleanup-logs.ts"
+        "cleanup-logs": "tsx app/scripts/cleanup-logs.ts",
+        "build:widget": "node build-widget.mjs"
     },
     "dependencies": {
         "@apollo/client": "^4.0.9",
@@ -57,6 +58,7 @@
         "@types/react": "^19",
         "@types/react-dom": "^19",
         "autoprefixer": "^10.4.21",
+        "esbuild": "^0.25.0",
         "eslint": "^9",
         "eslint-config-next": "15.5.4",
         "jest": "^29.7.0",

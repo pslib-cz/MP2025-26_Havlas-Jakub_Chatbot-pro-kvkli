@@ -63,6 +63,21 @@ jobs:
               run: |
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/apollo"
 
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: "20"
+                  cache: "npm"
+                  cache-dependency-path: app/package-lock.json
+
+            - name: Build widget.js
+              working-directory: ./app
+              run: |
+                  npm ci
+                  node build-widget.mjs
+                  mkdir -p widget
+                  cp widget.js widget/widget.js
+
             - name: Sync app files to VPS
               run: |
                   rsync -az \
@@ -91,38 +106,38 @@ jobs:
                   ENVEOF
 
                       # Stop and remove all containers including orphans
-                      docker compose -f docker-compose.prod.yml down --remove-orphans
+                      docker compose -f docker-compose.prod.vps.yml down --remove-orphans
                       
                       # Remove any dangling containers with the same names
-                      docker rm -f chromadb postgres nextjs_app nginx 2>/dev/null || true
+                      docker rm -f vps_chromadb vps_postgres vps_app vps_nginx vps_certbot 2>/dev/null || true
                       
                       # Prune old images to free disk space and speed up builds
                       docker image prune -f
                       
                       # Build and start services
-                      docker compose -f docker-compose.prod.yml build --progress=plain 2>&1 | tail -n 5
-                      docker compose -f docker-compose.prod.yml up -d
+                      docker compose -f docker-compose.prod.vps.yml build --progress=plain 2>&1 | tail -n 5
+                      docker compose -f docker-compose.prod.vps.yml up -d
                       
                       # Wait for services to be healthy with detailed logging
                       echo "Waiting for services to be healthy..."
                       for i in {1..60}; do
                         echo "Check $i/60..."
-                        docker compose -f docker-compose.prod.yml ps
+                        docker compose -f docker-compose.prod.vps.yml ps
                         
                         # Check ChromaDB health specifically
-                        CHROMA_STATUS=$(docker inspect chromadb --format='{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
+                        CHROMA_STATUS=$(docker inspect vps_chromadb --format='{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
                         echo "ChromaDB health status: $CHROMA_STATUS"
                         
                         if [ "$CHROMA_STATUS" = "unhealthy" ]; then
                           echo "⚠️  ChromaDB is unhealthy, showing logs:"
-                          docker logs chromadb --tail 100
+                          docker logs vps_chromadb --tail 100
                           echo ""
                           echo "Last health check output:"
-                          docker inspect chromadb --format='{{range .State.Health.Log}}{{.Output}}{{end}}' | tail -20
+                          docker inspect vps_chromadb --format='{{range .State.Health.Log}}{{.Output}}{{end}}' | tail -20
                         fi
                         
                         # Check if all required services are healthy
-                        HEALTHY_COUNT=$(docker compose -f docker-compose.prod.yml ps | grep -E "(chromadb|postgres)" | grep -c "healthy" || echo "0")
+                        HEALTHY_COUNT=$(docker compose -f docker-compose.prod.vps.yml ps | grep -E "(vps_chromadb|vps_postgres)" | grep -c "healthy" || echo "0")
                         if [ "$HEALTHY_COUNT" -eq 2 ]; then
                           echo "✓ All services healthy"
                           break
@@ -130,8 +145,8 @@ jobs:
                         
                         if [ $i -eq 60 ]; then
                           echo "❌ Timeout waiting for services to be healthy"
-                          docker logs chromadb --tail 200
-                          docker logs postgres --tail 100
+                          docker logs vps_chromadb --tail 200
+                          docker logs vps_postgres --tail 100
                           exit 1
                         fi
                         
@@ -140,12 +155,12 @@ jobs:
                       
                       # Final status check
                       echo "Final service status:"
-                      docker compose -f docker-compose.prod.yml ps
+                      docker compose -f docker-compose.prod.vps.yml ps
                       
                       # Run Prisma migrations
-                      docker compose -f docker-compose.prod.yml exec -T app npx prisma migrate deploy
+                      docker compose -f docker-compose.prod.vps.yml exec -T app npx prisma migrate deploy
                       
                       # Run integration tests to verify ChromaDB connectivity
                       echo "Running integration tests..."
-                      docker compose -f docker-compose.prod.yml exec -T app npm run test:integration || echo "⚠️  Integration tests failed, but deployment continues"
+                      docker compose -f docker-compose.prod.vps.yml exec -T app npm run test:integration || echo "⚠️  Integration tests failed, but deployment continues"
                   EOF

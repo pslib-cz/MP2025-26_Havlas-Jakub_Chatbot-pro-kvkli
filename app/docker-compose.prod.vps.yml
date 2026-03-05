@@ -1,0 +1,118 @@
+# docker-compose.prod.vps.yml
+#
+# VPS test deployment — mirrors production architecture.
+#
+# No real domain needed: uses 144-91-77-107.sslip.io (free DNS, points to VPS IP)
+# HTTPS via Let's Encrypt (run scripts/init-letsencrypt-vps.sh first)
+#
+# Directory layout on VPS:
+#   /var/www/apollo/        ← this repo (docker stack lives here)
+#   /var/www/apollo/widget/ ← drop widget.js here → served at /widget.js
+
+services:
+    # ── Next.js app (API + backoffice) ────────────────────────────────────
+    app:
+        build: .
+        container_name: vps_app
+        restart: always
+        env_file:
+            - .env
+        volumes:
+            - ./logs:/app/logs
+        depends_on:
+            chromadb:
+                condition: service_healthy
+            db:
+                condition: service_healthy
+        environment:
+            DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+            CHROMA_URL: http://chromadb:8000
+            # Allow requests from the sslip.io test domain
+            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://144-91-77-107.sslip.io}
+        expose:
+            - "3000"
+        networks:
+            - vps-network
+
+    # ── PostgreSQL ────────────────────────────────────────────────────────
+    db:
+        image: postgres:16
+        container_name: vps_postgres
+        restart: always
+        env_file:
+            - .env
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+        networks:
+            - vps-network
+
+    # ── ChromaDB ─────────────────────────────────────────────────────────
+    chromadb:
+        image: chromadb/chroma:latest
+        container_name: vps_chromadb
+        restart: always
+        volumes:
+            - ./chroma_db:/data
+        environment:
+            IS_PERSISTENT: "TRUE"
+            ANONYMIZED_TELEMETRY: "False"
+        expose:
+            - "8000"
+        healthcheck:
+            test: ["CMD-SHELL", "timeout 2 bash -c 'cat < /dev/null > /dev/tcp/localhost/8000' || exit 1"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 30s
+        networks:
+            - vps-network
+
+    # ── nginx: SSL termination, widget.js static, reverse proxy ──────────
+    nginx:
+        image: nginx:stable
+        container_name: vps_nginx
+        restart: always
+        ports:
+            - "80:80"
+            - "443:443"
+        volumes:
+            - ./nginx/vps.conf:/etc/nginx/conf.d/default.conf:ro
+            # Let's Encrypt certs written by certbot
+            - ./certbot/conf:/etc/letsencrypt:ro
+            # ACME webroot challenge
+            - ./certbot/www:/var/www/certbot:ro
+            # widget.js static file — after building run:
+            #   cp widget.js widget/widget.js
+            - ./widget:/var/www/widget:ro
+        depends_on:
+            - app
+        networks:
+            - vps-network
+
+    # ── Certbot: auto-renew every 12 h ───────────────────────────────────
+    certbot:
+        image: certbot/certbot:latest
+        container_name: vps_certbot
+        restart: unless-stopped
+        volumes:
+            - ./certbot/conf:/etc/letsencrypt
+            - ./certbot/www:/var/www/certbot
+        entrypoint: >
+            /bin/sh -c "trap exit TERM;
+            while :; do
+                certbot renew --webroot -w /var/www/certbot --quiet;
+                sleep 12h & wait $${!};
+            done"
+
+networks:
+    vps-network:
+        driver: bridge
+
+volumes:
+    postgres_data:

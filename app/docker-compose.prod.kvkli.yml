@@ -1,0 +1,116 @@
+# docker-compose.prod.kvkli.yml
+#
+# Deployment layout on the server:
+#   /var/www/kvkli   – existing Apache PHP site (kvkli.cz) — widget.js goes here
+#   /var/www/apollo  – this Docker stack (chatbot backend)
+#
+# Subdomain: chatbot.kvkli.cz  →  points to this server (A record)
+# HTTPS:     Let's Encrypt via certbot container + nginx
+#
+# First-time start: see scripts/init-letsencrypt.sh
+
+services:
+    # ── Next.js application ────────────────────────────────────────────────
+    app:
+        build: .
+        container_name: apollo_app
+        restart: always
+        env_file:
+            - .env
+        volumes:
+            - ./logs:/app/logs
+        depends_on:
+            chromadb:
+                condition: service_healthy
+            db:
+                condition: service_healthy
+        environment:
+            DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+            CHROMA_URL: http://chromadb:8000
+            # Allow requests from the kvkli.cz website and the admin subdomain
+            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://www.kvkli.cz,https://kvkli.cz,https://chatbot.kvkli.cz}
+        expose:
+            - "3000"
+        networks:
+            - apollo-network
+
+    # ── PostgreSQL ─────────────────────────────────────────────────────────
+    db:
+        image: postgres:16
+        container_name: apollo_postgres
+        restart: always
+        env_file:
+            - .env
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+        networks:
+            - apollo-network
+
+    # ── ChromaDB vector store ──────────────────────────────────────────────
+    chromadb:
+        image: chromadb/chroma:latest
+        container_name: apollo_chromadb
+        restart: always
+        volumes:
+            - ./chroma_db:/data
+        environment:
+            IS_PERSISTENT: "TRUE"
+            ANONYMIZED_TELEMETRY: "False"
+        expose:
+            - "8000"
+        healthcheck:
+            test: ["CMD-SHELL", "timeout 2 bash -c 'cat < /dev/null > /dev/tcp/localhost/8000' || exit 1"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 30s
+        networks:
+            - apollo-network
+
+    # ── nginx: SSL termination + reverse proxy ─────────────────────────────
+    nginx:
+        image: nginx:stable
+        container_name: apollo_nginx
+        restart: always
+        ports:
+            - "80:80"    # HTTP – only for ACME challenge + redirect
+            - "443:443"  # HTTPS
+        volumes:
+            - ./nginx/apollo.conf:/etc/nginx/conf.d/default.conf:ro
+            # Let's Encrypt certificates (written by certbot container)
+            - ./certbot/conf:/etc/letsencrypt:ro
+            # Certbot webroot challenge directory
+            - ./certbot/www:/var/www/certbot:ro
+        depends_on:
+            - app
+        networks:
+            - apollo-network
+
+    # ── Certbot: obtain & auto-renew Let's Encrypt certs ──────────────────
+    certbot:
+        image: certbot/certbot:latest
+        container_name: apollo_certbot
+        restart: unless-stopped
+        volumes:
+            - ./certbot/conf:/etc/letsencrypt
+            - ./certbot/www:/var/www/certbot
+        # Check for renewal every 12 hours (certbot only renews if < 30 days left)
+        entrypoint: >
+            /bin/sh -c "trap exit TERM;
+            while :; do
+                certbot renew --webroot -w /var/www/certbot --quiet;
+                sleep 12h & wait $${!};
+            done"
+
+networks:
+    apollo-network:
+        driver: bridge
+
+volumes:
+    postgres_data:
