@@ -87,6 +87,7 @@ jobs:
                     --exclude=logs \
                     --exclude=chroma_db \
                     --exclude=postgres_data \
+                    --exclude=certbot \
                     app/ \
                     ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/myapp/
 
