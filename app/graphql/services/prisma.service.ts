@@ -1,20 +1,16 @@
 import { prisma } from "../../lib/prisma";
 import LoggerService from "./logger.service";
+import { AddPromptFeedbackArgs } from "../../types";
 
 const SERVICE = "prisma";
+const MAX_PROMPTS_PER_CONVERSATION = 10;
 
 export const prismaService = {
-    // Conversation operations
     async findAllConversations() {
-        LoggerService.info("findAllConversations called", { service: SERVICE });
         try {
             const result = await prisma.conversation.findMany({
                 include: { prompts: true },
             });
-            LoggerService.info(
-                `findAllConversations returned ${result.length} records`,
-                { service: SERVICE },
-            );
             return result;
         } catch (error) {
             LoggerService.logError(
@@ -27,16 +23,11 @@ export const prismaService = {
     },
 
     async findConversationById(id: string) {
-        LoggerService.info("findConversationById called", { service: SERVICE });
         try {
             const result = await prisma.conversation.findUnique({
                 where: { conversationId: Number(id) },
                 include: { prompts: true },
             });
-            LoggerService.info(
-                `findConversationById returned ${result ? 1 : 0} record`,
-                { service: SERVICE },
-            );
             return result;
         } catch (error) {
             LoggerService.logError(
@@ -53,22 +44,14 @@ export const prismaService = {
         userFeedbackMessage: string | undefined,
         userFeedback: boolean | null,
     ) {
-        LoggerService.info("updateConversationFeedback called", {
-            service: SERVICE,
-        });
         try {
             const result = await prisma.conversation.update({
                 where: { conversationId },
                 data: {
                     userFeedback,
-                    userFeedbackMessage,
                 },
                 include: { prompts: true },
             });
-            LoggerService.info(
-                `updateConversationFeedback returned ${result ? 1 : 0} record`,
-                { service: SERVICE },
-            );
             return result;
         } catch (error) {
             LoggerService.logError(
@@ -80,9 +63,7 @@ export const prismaService = {
         }
     },
 
-    // Prompt operations
     async findPaginatedPrompts(offset: number, limit: number) {
-        LoggerService.info("findPaginatedPrompts called", { service: SERVICE });
         try {
             const result = await prisma.prompt.findMany({
                 orderBy: { promptId: "desc" },
@@ -90,10 +71,6 @@ export const prismaService = {
                 take: limit,
                 include: { conversation: true },
             });
-            LoggerService.info(
-                `findPaginatedPrompts returned ${result.length} records`,
-                { service: SERVICE },
-            );
             return result;
         } catch (error) {
             LoggerService.logError(
@@ -106,12 +83,8 @@ export const prismaService = {
     },
 
     async countPrompts() {
-        LoggerService.info("countPrompts called", { service: SERVICE });
         try {
             const result = await prisma.prompt.count();
-            LoggerService.info(`countPrompts returned ${result} records`, {
-                service: SERVICE,
-            });
             return result;
         } catch (error) {
             LoggerService.logError(error as Error, "countPrompts failed", {
@@ -122,16 +95,11 @@ export const prismaService = {
     },
 
     async findAllPrompts() {
-        LoggerService.info("findAllPrompts called", { service: SERVICE });
         try {
             const result = await prisma.prompt.findMany({
                 orderBy: { promptId: "desc" },
                 include: { conversation: true },
             });
-            LoggerService.info(
-                `findAllPrompts returned ${result.length} records`,
-                { service: SERVICE },
-            );
             return result;
         } catch (error) {
             LoggerService.logError(error as Error, "findAllPrompts failed", {
@@ -142,19 +110,135 @@ export const prismaService = {
     },
 
     async deletePrompt(id: number) {
-        LoggerService.info("deletePrompt called", { service: SERVICE });
         try {
             const result = await prisma.prompt.delete({
                 where: { promptId: Number(id) },
             });
-            LoggerService.info(
-                `deletePrompt returned ${result ? 1 : 0} record`,
-                { service: SERVICE },
-            );
             return result.promptId;
         } catch (error) {
             LoggerService.logError(error as Error, "deletePrompt failed", {
                 service: SERVICE,
+            });
+            throw error;
+        }
+    },
+    async CreateConversation() {
+        return await prisma.conversation.create({
+            data: { length: 0 },
+        });
+    },
+    async addPrompt({
+        promptText,
+        answerText,
+        conversationId,
+    }: {
+        promptText: string;
+        answerText: string;
+        conversationId?: number;
+    }) {
+        try {
+            if (!conversationId) {
+                const newConvo = await prismaService.CreateConversation();
+                conversationId = newConvo.conversationId;
+            } else {
+                const promptCount = await prisma.prompt.count({
+                    where: { conversationId: conversationId },
+                });
+
+                if (promptCount >= MAX_PROMPTS_PER_CONVERSATION) {
+                    LoggerService.warn("Conversation prompt limit reached", {
+                        conversationId: conversationId,
+                        promptCount,
+                    });
+                    throw new Error("CONVERSATION_LIMIT_REACHED");
+                }
+            }
+
+            const prompt = await prismaService.createPrompt(
+                conversationId,
+                promptText,
+                answerText,
+            );
+
+            return { conversationId: conversationId, prompt };
+        } catch (error) {
+            LoggerService.logError(error as Error, "addPrompt", {
+                promptText,
+                conversationId,
+            });
+            throw error;
+        }
+    },
+    async createPrompt(
+        conversationId: number,
+        promptText: string,
+        answerText: string,
+    ) {
+        try {
+            const prompt = await prisma.prompt.create({
+                data: {
+                    conversationId,
+                    promptText,
+                    answerText,
+                },
+            });
+            return prompt;
+        } catch (error) {
+            LoggerService.logError(error as Error, "createPrompt failed", {
+                service: SERVICE,
+                conversationId,
+            });
+            throw error;
+        }
+    },
+
+    async getReports() {
+        try {
+            const [positive, negative, total] = await Promise.all([
+                prisma.prompt.count({ where: { userFeedback: true } }),
+                prisma.prompt.count({ where: { userFeedback: false } }),
+                prisma.prompt.count(),
+            ]);
+
+            const noFeedback = total - positive - negative;
+
+            return { positive, negative, noFeedback, total };
+        } catch (error) {
+            LoggerService.logError(error as Error, "getReports");
+            throw error;
+        }
+    },
+    async addPromptFeedback({
+        conversationId,
+        promptNth,
+        userFeedback,
+    }: AddPromptFeedbackArgs) {
+        try {
+            const prompts = await prisma.prompt.findMany({
+                where: { conversationId },
+                orderBy: { promptId: "asc" },
+            });
+
+            const target = prompts[promptNth];
+            if (!target) {
+                LoggerService.warn("Prompt not found for feedback", {
+                    conversationId,
+                    promptNth,
+                });
+                throw new Error("Prompt not found.");
+            }
+
+            const updated = await prisma.prompt.update({
+                where: { promptId: target.promptId },
+                data: { userFeedback },
+            });
+
+            return updated;
+        } catch (error) {
+            LoggerService.logError(error as Error, "addPromptFeedback", {
+                conversationId,
+                promptNth,
+                userFeedback,
             });
             throw error;
         }

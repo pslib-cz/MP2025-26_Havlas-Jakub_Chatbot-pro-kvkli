@@ -61,7 +61,7 @@ jobs:
 
             - name: Ensure target directory exists
               run: |
-                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/apollo"
+                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/myapp && sudo chown -R \$(whoami):\$(whoami) /var/www/myapp"
 
             - name: Setup Node.js
               uses: actions/setup-node@v4
@@ -88,14 +88,14 @@ jobs:
                     --exclude=chroma_db \
                     --exclude=postgres_data \
                     app/ \
-                    ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/
+                    ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/myapp/
 
             - name: Deploy with Docker Compose
               run: |
                   ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=20 \
                     ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
                       set -e
-                      cd /var/www/apollo
+                      cd /var/www/myapp
 
                       cat << 'ENVEOF' > .env
                   ${{ secrets.ENV_FILE }}

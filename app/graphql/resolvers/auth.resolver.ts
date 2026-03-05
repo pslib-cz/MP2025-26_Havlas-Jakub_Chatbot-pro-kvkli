@@ -1,14 +1,10 @@
 import { authService } from "../services/auth.service";
-import { LoginArgs } from "../../types";
+import { LoginArgs, AuthContext } from "../../types";
 import { GraphQLError } from "graphql";
 
 export const authResolvers = {
     Query: {
-        verifyToken: async (
-            _: unknown,
-            __: unknown,
-            context: { token?: string },
-        ) => {
+        verifyToken: async (_: unknown, __: unknown, context: AuthContext) => {
             if (!context.token) return false;
             const user = authService.verifyToken(context.token);
             return !!user;

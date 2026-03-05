@@ -45,7 +45,9 @@ function isValidChunk(chunk: Chunk): boolean {
     }
 
     // If heading or content suggests book recommendations, skip
-    if (bookRecommendationPatterns.some((pattern) => pattern.test(chunk.text))) {
+    if (
+        bookRecommendationPatterns.some((pattern) => pattern.test(chunk.text))
+    ) {
         return false;
     }
 
@@ -90,7 +92,7 @@ function isValidChunk(chunk: Chunk): boolean {
         return true;
     }
 
-    return false;
+    return true;
 }
 
 /**
@@ -116,9 +118,13 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
 
         // Build hierarchical context for contact pages
         let departmentContext = "";
-        const isContactPage = page.url.toLowerCase().includes('/kontakt');
-        
-        for (let sectionIdx = 0; sectionIdx < page.sections.length; sectionIdx++) {
+        const isContactPage = page.url.toLowerCase().includes("/kontakt");
+
+        for (
+            let sectionIdx = 0;
+            sectionIdx < page.sections.length;
+            sectionIdx++
+        ) {
             const section = page.sections[sectionIdx];
             const content = section.content.trim();
             if (!content) continue;
@@ -130,13 +136,13 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
 
             // Add page title and URL context to improve relevance
             let contextPrefix = `Stránka: ${page.title}\nURL: ${page.path}\n`;
-            
+
             // For contact pages, include department context in h3 subsections
             if (isContactPage && section.level === 3 && departmentContext) {
                 contextPrefix += `Oddělení: ${departmentContext}\n`;
             }
-            
-            contextPrefix += '\n';
+
+            contextPrefix += "\n";
 
             // If section is small enough, keep as single chunk
             if (content.length <= MAX_CHUNK_CHARS) {
@@ -189,7 +195,10 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
                 }
 
                 // Don't forget the last chunk
-                if (currentChunk.trim().length > contextPrefix.length + section.heading.length + 10) {
+                if (
+                    currentChunk.trim().length >
+                    contextPrefix.length + section.heading.length + 10
+                ) {
                     const chunk: Chunk = {
                         url: page.url,
                         section_heading: section.heading,
@@ -210,9 +219,8 @@ export function flattenPagesToChunks(pages: CrawledPage[]): Chunk[] {
     LoggerService.info("Chunk creation completed", {
         totalChunks: chunks.length,
         pagesProcessed: pages.length,
-        avgChunksPerPage: pages.length > 0
-            ? (chunks.length / pages.length).toFixed(2)
-            : "0",
+        avgChunksPerPage:
+            pages.length > 0 ? (chunks.length / pages.length).toFixed(2) : "0",
     });
 
     return chunks;

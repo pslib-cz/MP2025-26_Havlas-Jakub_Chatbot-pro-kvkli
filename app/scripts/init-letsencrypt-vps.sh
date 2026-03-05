@@ -8,7 +8,7 @@
 # Prerequisites:
 #   - Port 80 and 443 open on the VPS firewall (ufw allow 80; ufw allow 443)
 #   - Docker + docker compose installed
-#   - Run from /var/www/apollo (where this repo lives)
+#   - Run from /var/www/myapp (where this repo lives)
 #
 # Usage:
 #   chmod +x scripts/init-letsencrypt-vps.sh
@@ -17,7 +17,7 @@
 set -e
 
 DOMAIN="144-91-77-107.sslip.io"
-EMAIL="your-email@example.com"   # ← replace with a real address
+EMAIL="jakub.havlas.022@pslib.cz"   # ← replace with a real address
 COMPOSE_FILE="docker-compose.prod.vps.yml"
 
 echo "==> Creating required directories..."
@@ -46,7 +46,7 @@ sleep 3  # Give nginx a moment to start
 
 # ── Step 2: obtain the certificate ────────────────────────────────────────────
 echo "==> Requesting certificate for $DOMAIN..."
-docker compose -f "$COMPOSE_FILE" run --rm certbot \
+docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot \
     certonly \
     --webroot \
     --webroot-path /var/www/certbot \
@@ -98,6 +98,11 @@ server {
         add_header Access-Control-Allow-Origin "*";
     }
 
+    location = /widget-test.html {
+        root /var/www/widget;
+        add_header Cache-Control "no-store";
+    }
+
     location / {
         proxy_pass         http://app:3000;
         proxy_set_header   Host              $host;
@@ -114,6 +119,10 @@ SSLCONF
 # ── Step 5: start the full stack ──────────────────────────────────────────────
 echo "==> Starting full stack..."
 docker compose -f "$COMPOSE_FILE" up -d
+
+# Reload nginx so it picks up the SSL config (it may have been running with the HTTP-only stub)
+echo "==> Reloading nginx..."
+docker exec vps_nginx nginx -s reload 2>/dev/null || docker compose -f "$COMPOSE_FILE" restart nginx
 
 echo ""
 echo "✓ Done!  Your backend is live at https://$DOMAIN"

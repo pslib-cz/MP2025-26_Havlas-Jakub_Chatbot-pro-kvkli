@@ -1,40 +1,19 @@
 import { prismaService } from "../services/prisma.service";
 import { aiService } from "../services/ai.service";
-import { AddPromptArgs, AddPromptFeedbackArgs, PaginatedPromptsArgs, DeletePromptArgs, ConversationHistoryEntry } from "../../types";
-import { promptService } from "graphql/services/prompt.service";
-import { authService } from "../services/auth.service";
-import { GraphQLError } from "graphql";
-
-function requireAuth(context: { token?: string }) {
-    if (!context.token || !authService.verifyToken(context.token)) {
-        throw new GraphQLError("Unauthorized", {
-            extensions: { code: "UNAUTHENTICATED" },
-        });
-    }
-}
+import { AddPromptArgs, AddPromptFeedbackArgs, PaginatedPromptsArgs, DeletePromptArgs, ConversationHistoryEntry, AddConvoFeedbackArgs } from "../../types";
+import { withAuth } from "../utils/resolver.utils";
 
 export const promptResolvers = {
     Query: {
-        prompts: async (_: unknown, __: unknown, context: { token?: string }) => {
-            requireAuth(context);
-            return prismaService.findAllPrompts();
-        },
-        paginatedPrompts: async (
-            _: unknown,
-            { offset, limit }: PaginatedPromptsArgs,
-            context: { token?: string },
-        ) => {
-            requireAuth(context);
+        prompts: withAuth(async () => prismaService.findAllPrompts()),
+        paginatedPrompts: withAuth(async (_: unknown, { offset, limit }: PaginatedPromptsArgs) => {
             const [prompts, totalCount] = await Promise.all([
                 prismaService.findPaginatedPrompts(offset, limit),
                 prismaService.countPrompts(),
             ]);
             return { prompts, totalCount };
-        },
-        reports: async (_: unknown, __: unknown, context: { token?: string }) => {
-            requireAuth(context);
-            return promptService.getReports();
-        },
+        }),
+        reports: withAuth(async () => prismaService.getReports()),
     },
     Mutation: {
         addPrompt: async (
@@ -65,11 +44,11 @@ export const promptResolvers = {
             });
 
             const { conversationId: newConversationId, prompt } =
-                await promptService.addPrompt({
+                await prismaService.addPrompt({
                     promptText,
                     answerText,
                     conversationId,
-                } as any);
+                } satisfies AddPromptArgs);
 
             return {
                 conversationId: newConversationId,
@@ -81,25 +60,20 @@ export const promptResolvers = {
             _: unknown,
             { conversationId, promptNth, userFeedback }: AddPromptFeedbackArgs,
         ) => {
-            return promptService.addPromptFeedback({
+            return prismaService.addPromptFeedback({
                 conversationId,
                 promptNth,
                 userFeedback,
             });
         },
 
-        deletePrompt: async (_: unknown, { id }: DeletePromptArgs, context: { token?: string }) => {
-            requireAuth(context);
-            return prismaService.deletePrompt(Number(id));
-        },
+        deletePrompt: withAuth(async (_: unknown, { id }: DeletePromptArgs) =>
+            prismaService.deletePrompt(Number(id))
+        ),
 
         addConvoFeedback: async (
             _: unknown,
-            { conversationId, userFeedbackMessage, userFeedback }: {
-                conversationId: number;
-                userFeedbackMessage?: string;
-                userFeedback?: boolean | null;
-            },
+            { conversationId, userFeedbackMessage, userFeedback }: AddConvoFeedbackArgs,
         ) => {
             return prismaService.updateConversationFeedback(
                 conversationId,
