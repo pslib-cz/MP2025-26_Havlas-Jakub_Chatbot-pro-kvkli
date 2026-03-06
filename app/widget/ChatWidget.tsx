@@ -111,9 +111,9 @@ function renderMarkdown(text: string): React.ReactNode[] {
 // ─── SVG icons ────────────────────────────────────────────────────────────────
 
 const BookIcon = ({ dark = false }) => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={dark ? "#000" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    <svg width="27" height="26" viewBox="0 0 27 26" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M10.1667 8.06862H10.18M16.8333 8.06862H16.8467M21.5 1.5C22.5609 1.5 23.5783 1.91523 24.3284 2.65434C25.0786 3.39346 25.5 4.39591 25.5 5.44117V15.951C25.5 16.9962 25.0786 17.9987 24.3284 18.7378C23.5783 19.4769 22.5609 19.8921 21.5 19.8921H14.8333L8.16667 23.8333V19.8921H5.5C4.43913 19.8921 3.42172 19.4769 2.67157 18.7378C1.92143 17.9987 1.5 16.9962 1.5 15.951V5.44117C1.5 4.39591 1.92143 3.39346 2.67157 2.65434C3.42172 1.91523 4.43913 1.5 5.5 1.5H21.5Z" stroke={dark ? "#000" : "#3C426B"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M10.1665 13.3235C10.601 13.7604 11.1196 14.1076 11.692 14.3445C12.2644 14.5815 12.879 14.7036 13.4998 14.7036C14.1207 14.7036 14.7353 14.5815 15.3077 14.3445C15.88 14.1076 16.3987 13.7604 16.8332 13.3235" stroke={dark ? "#000" : "#3C426B"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
 );
 
@@ -221,7 +221,6 @@ export default function ChatWidget({ backendUrl }: ChatWidgetProps) {
     const [isLimited, setIsLimited] = useState(false);
     const [feedbackToast, setFeedbackToast] = useState(false);
     const [convoFeedbackSubmitted, setConvoFeedbackSubmitted] = useState(false);
-    const [convoFeedbackMessage, setConvoFeedbackMessage] = useState("");
     const [convoFeedbackLoading, setConvoFeedbackLoading] = useState(false);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -339,7 +338,6 @@ export default function ChatWidget({ backendUrl }: ChatWidgetProps) {
             await gqlMutation(gqlUrl, GQL_ADD_CONVO_FEEDBACK, {
                 conversationId,
                 userFeedback: isPositive,
-                userFeedbackMessage: convoFeedbackMessage.trim() || undefined,
             });
             setConvoFeedbackSubmitted(true);
         } catch {
@@ -423,13 +421,6 @@ export default function ChatWidget({ backendUrl }: ChatWidgetProps) {
                                         👎 Nepomohlo
                                     </button>
                                 </div>
-                                <textarea
-                                    className="cw-feedback-textarea"
-                                    value={convoFeedbackMessage}
-                                    onChange={(e) => setConvoFeedbackMessage(e.target.value)}
-                                    placeholder="Volitelný komentář..."
-                                    rows={2}
-                                />
                             </div>
                         )}
 

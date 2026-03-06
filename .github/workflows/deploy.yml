@@ -106,6 +106,16 @@ jobs:
                   ALLOWED_IPS=${{ secrets.ALLOWED_IPS }}
                   ENVEOF
 
+                      # Ensure TLS params exist (only generated once, ~30s)
+                      if [ ! -f ./certbot/conf/options-ssl-nginx.conf ]; then
+                        curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf \
+                          -o ./certbot/conf/options-ssl-nginx.conf
+                      fi
+                      if [ ! -f ./certbot/conf/ssl-dhparams.pem ]; then
+                        echo "Generating DH params (~30s)..."
+                        openssl dhparam -out ./certbot/conf/ssl-dhparams.pem 2048
+                      fi
+
                       # Stop and remove all containers including orphans
                       docker compose -f docker-compose.prod.vps.yml down --remove-orphans
                       
@@ -118,6 +128,9 @@ jobs:
                       # Build and start services
                       docker compose -f docker-compose.prod.vps.yml build --progress=plain 2>&1 | tail -n 5
                       docker compose -f docker-compose.prod.vps.yml up -d
+                      
+                      # Reload nginx so it picks up the latest vps.conf (SSL config)
+                      docker exec vps_nginx nginx -s reload 2>/dev/null || true
                       
                       # Wait for services to be healthy with detailed logging
                       echo "Waiting for services to be healthy..."
