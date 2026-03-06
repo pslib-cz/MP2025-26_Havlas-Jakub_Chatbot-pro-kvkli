@@ -28,7 +28,7 @@ services:
             DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
             CHROMA_URL: http://chromadb:8000
             # Allow requests from the sslip.io test domain
-            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://144-91-77-107.sslip.io}
+            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://144-91-77-107.sslip.io,https://www.kvkli.cz,https://kvkli.cz,}
         expose:
             - "3000"
         networks:

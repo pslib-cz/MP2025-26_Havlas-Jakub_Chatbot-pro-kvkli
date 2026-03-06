@@ -95,8 +95,8 @@ function getBackendUrl(): string {
 function mount() {
     injectStyles();
 
-    const backendUrl = getBackendUrl();
-
+    //const backendUrl = getBackendUrl();
+    const backendUrl = "https://144-91-77-107.sslip.io"; // Hardcoded for testing — replace with the line above for dynamic detection
     const container = document.createElement("div");
     container.id = "cw-root";
     document.body.appendChild(container);
