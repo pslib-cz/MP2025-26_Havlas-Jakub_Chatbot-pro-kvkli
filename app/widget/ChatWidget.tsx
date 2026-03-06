@@ -11,7 +11,6 @@ async function gqlMutation(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query, variables }),
-        credentials: "include",
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
