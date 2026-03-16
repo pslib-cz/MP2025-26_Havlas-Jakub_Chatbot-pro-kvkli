@@ -74,18 +74,48 @@ docker compose -f "$COMPOSE_FILE" up -d --no-deps nginx
 
 sleep 3  # Give nginx a moment to start
 
+echo "==> Verifying ACME challenge path over HTTP..."
+mkdir -p ./certbot/www/.well-known/acme-challenge
+echo "acme-probe" > ./certbot/www/.well-known/acme-challenge/ping
+HTTP_STATUS="$(curl -s -o /tmp/acme-probe.out -w '%{http_code}' "http://$DOMAIN/.well-known/acme-challenge/ping" || true)"
+if [ "$HTTP_STATUS" != "200" ]; then
+    echo "ERROR: ACME probe failed (HTTP $HTTP_STATUS)."
+    echo "Response body:"
+    cat /tmp/acme-probe.out 2>/dev/null || true
+    echo "Nginx logs (last 80 lines):"
+    docker logs vps_nginx --tail 80 2>/dev/null || true
+    exit 1
+fi
+echo "==> ACME probe OK"
+
 # ── Step 2: obtain the certificate ────────────────────────────────────────────
 echo "==> Requesting certificate for $DOMAIN and $WIDGET_DOMAIN..."
-docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot \
+set +e
+timeout 600 docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot \
     certonly \
     --webroot \
     --webroot-path /var/www/certbot \
     --email "$EMAIL" \
     --agree-tos \
     --no-eff-email \
+    --non-interactive \
+    --verbose \
     --expand \
     -d "$DOMAIN" \
     -d "$WIDGET_DOMAIN"
+CERTBOT_EXIT=$?
+set -e
+
+if [ "$CERTBOT_EXIT" -ne 0 ]; then
+    if [ "$CERTBOT_EXIT" -eq 124 ]; then
+        echo "ERROR: certbot timed out after 10 minutes."
+    else
+        echo "ERROR: certbot failed with exit code $CERTBOT_EXIT."
+    fi
+    echo "Nginx logs (last 100 lines):"
+    docker logs vps_nginx --tail 100 2>/dev/null || true
+    exit 1
+fi
 
 # ── Step 3: download recommended nginx TLS parameters ────────────────────────
 echo "==> Downloading TLS parameters..."
