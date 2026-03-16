@@ -104,6 +104,22 @@ jobs:
                     # Reload nginx so it picks up the latest vps.conf (SSL config)
                     docker exec vps_nginx nginx -s reload 2>/dev/null || true
 
+                    # Expand cert to cover widget subdomain if not already included
+                    CERT_FILE="./certbot/conf/live/144-91-77-107.sslip.io/fullchain.pem"
+                    if [ -f "$CERT_FILE" ] && ! openssl x509 -in "$CERT_FILE" -text -noout 2>/dev/null | grep -q "widget.144-91-77-107.sslip.io"; then
+                      echo "Expanding certificate to include widget subdomain..."
+                      docker compose -f docker-compose.prod.vps.yml run --rm --entrypoint certbot certbot \
+                        certonly --webroot -w /var/www/certbot \
+                        --email jakub.havlas.022@pslib.cz \
+                        --agree-tos --no-eff-email --expand \
+                        -d 144-91-77-107.sslip.io \
+                        -d widget.144-91-77-107.sslip.io \
+                        && docker exec vps_nginx nginx -s reload \
+                        || echo "⚠️  certbot expand failed, check logs"
+                    else
+                      echo "✓ Certificate already covers widget subdomain"
+                    fi
+
                     # Wait for services to be healthy with detailed logging
                     echo "Waiting for services to be healthy..."
                     for i in {1..60}; do

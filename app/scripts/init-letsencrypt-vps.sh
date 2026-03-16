@@ -17,6 +17,7 @@
 set -e
 
 DOMAIN="144-91-77-107.sslip.io"
+WIDGET_DOMAIN="widget.144-91-77-107.sslip.io"
 EMAIL="jakub.havlas.022@pslib.cz"   # ← replace with a real address
 COMPOSE_FILE="docker-compose.prod.vps.yml"
 
@@ -28,7 +29,7 @@ echo "==> Writing temporary HTTP-only nginx config..."
 cat > ./nginx/vps.conf << 'TMPCONF'
 server {
     listen 80;
-    server_name 144-91-77-107.sslip.io;
+    server_name 144-91-77-107.sslip.io widget.144-91-77-107.sslip.io;
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
@@ -45,7 +46,7 @@ docker compose -f "$COMPOSE_FILE" up -d nginx
 sleep 3  # Give nginx a moment to start
 
 # ── Step 2: obtain the certificate ────────────────────────────────────────────
-echo "==> Requesting certificate for $DOMAIN..."
+echo "==> Requesting certificate for $DOMAIN and $WIDGET_DOMAIN..."
 docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot \
     certonly \
     --webroot \
@@ -53,7 +54,9 @@ docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot \
     --email "$EMAIL" \
     --agree-tos \
     --no-eff-email \
-    -d "$DOMAIN"
+    --expand \
+    -d "$DOMAIN" \
+    -d "$WIDGET_DOMAIN"
 
 # ── Step 3: download recommended nginx TLS parameters ────────────────────────
 echo "==> Downloading TLS parameters..."
@@ -71,7 +74,7 @@ echo "==> Writing full nginx config (HTTP + HTTPS)..."
 cat > ./nginx/vps.conf << 'SSLCONF'
 server {
     listen 80;
-    server_name 144-91-77-107.sslip.io;
+    server_name 144-91-77-107.sslip.io widget.144-91-77-107.sslip.io;
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
@@ -112,6 +115,31 @@ server {
         proxy_http_version 1.1;
         proxy_set_header   Upgrade    $http_upgrade;
         proxy_set_header   Connection "upgrade";
+    }
+}
+server {
+    listen 443 ssl;
+    server_name widget.144-91-77-107.sslip.io;
+
+    ssl_certificate     /etc/letsencrypt/live/144-91-77-107.sslip.io/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/144-91-77-107.sslip.io/privkey.pem;
+    include             /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam         /etc/letsencrypt/ssl-dhparams.pem;
+
+    root /var/www/widget;
+    index widget-test.html;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location = /widget.js {
+        add_header Cache-Control "public, max-age=3600";
+        add_header Access-Control-Allow-Origin "*";
+    }
+
+    location = /widget-test.html {
+        add_header Cache-Control "no-store";
     }
 }
 SSLCONF
