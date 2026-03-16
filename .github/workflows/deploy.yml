@@ -54,10 +54,11 @@ jobs:
                   push: true
                   tags: ghcr.io/${{ github.repository_owner }}/kvkli-app:latest
 
-            - name: Setup SSH agent
-              uses: webfactory/ssh-agent@v0.9.0
-              with:
-                  ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+            - name: Configure SSH key
+              run: |
+                  mkdir -p ~/.ssh
+                  printf '%s\n' '${{ secrets.VPS_SSH_KEY }}' > ~/.ssh/id_ed25519
+                  chmod 600 ~/.ssh/id_ed25519
 
             - name: Add VPS to known_hosts
               run: |
@@ -75,6 +76,9 @@ jobs:
                   ${{ secrets.ENV_FILE }}
                   ENVEOF
 
+                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'mkdir -p /var/www/myapp/nginx'
+                  scp app/docker-compose.prod.vps.yml ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/myapp/docker-compose.prod.vps.yml
+                  scp app/nginx/vps.conf ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/myapp/nginx/vps.conf
                   scp /tmp/myapp.env ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/myapp.env
 
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
@@ -124,14 +128,23 @@ jobs:
                     fi
 
                     if [ "$NEED_CERT_UPDATE" -eq 1 ]; then
-                      timeout 600 docker compose -f docker-compose.prod.vps.yml run --rm certbot-init \
+                      if timeout 600 docker compose -f docker-compose.prod.vps.yml run --rm certbot-init \
                         certonly --webroot -w /var/www/certbot \
                         --email jakub.havlas.022@pslib.cz \
                         --agree-tos --no-eff-email --non-interactive --expand --verbose \
                         -d 144-91-77-107.sslip.io \
-                        -d widget.144-91-77-107.sslip.io \
-                        && docker exec vps_nginx nginx -s reload \
-                        || echo "⚠️  certbot issue/expand failed, check logs"
+                        -d widget.144-91-77-107.sslip.io; then
+                        docker exec vps_nginx nginx -s reload
+                      else
+                        echo "ERROR: certbot issue/expand failed"
+                        docker logs vps_nginx --tail 100 || true
+                        exit 1
+                      fi
+                    fi
+
+                    if ! openssl x509 -in "$CERT_FILE" -text -noout 2>/dev/null | grep -q "widget.144-91-77-107.sslip.io"; then
+                      echo "ERROR: certificate still missing widget SAN"
+                      exit 1
                     fi
 
                     # Wait for services to be healthy with detailed logging
