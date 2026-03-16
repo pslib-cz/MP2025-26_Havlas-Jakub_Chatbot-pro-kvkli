@@ -91,18 +91,15 @@ echo "==> ACME probe OK"
 # ── Step 2: obtain the certificate ────────────────────────────────────────────
 echo "==> Requesting certificate for $DOMAIN and $WIDGET_DOMAIN..."
 set +e
-timeout 600 docker compose -f "$COMPOSE_FILE" run --rm --entrypoint certbot certbot \
-    certonly \
-    --webroot \
-    --webroot-path /var/www/certbot \
-    --email "$EMAIL" \
-    --agree-tos \
-    --no-eff-email \
-    --non-interactive \
-    --verbose \
-    --expand \
-    -d "$DOMAIN" \
-    -d "$WIDGET_DOMAIN"
+timeout 600 docker compose -f "$COMPOSE_FILE" run --rm certbot-init certonly \
+  --webroot \
+  --webroot-path /var/www/certbot \
+  --email "$EMAIL" \
+  --agree-tos \
+  --no-eff-email \
+  --non-interactive \
+  -d "$DOMAIN" \
+  -d "$WIDGET_DOMAIN"
 CERTBOT_EXIT=$?
 set -e
 
