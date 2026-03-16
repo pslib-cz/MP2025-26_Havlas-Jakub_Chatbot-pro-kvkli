@@ -8,7 +8,7 @@
 # Prerequisites:
 #   - Port 80 and 443 open on the VPS firewall (ufw allow 80; ufw allow 443)
 #   - Docker + docker compose installed
-#   - Run from /var/www/myapp (where this repo lives)
+#   - Run from /var/www/apollo (where this repo lives)
 #
 # Usage:
 #   chmod +x scripts/init-letsencrypt-vps.sh
@@ -56,7 +56,7 @@ server {
 TMPCONF
 
 echo "==> Starting nginx (HTTP only)..."
-docker compose -f "$COMPOSE_FILE" up -d nginx
+docker compose -f "$COMPOSE_FILE" up -d --no-deps nginx
 
 sleep 3  # Give nginx a moment to start
 
@@ -160,6 +160,10 @@ server {
 SSLCONF
 
 # ── Step 5: start the full stack ──────────────────────────────────────────────
+echo "==> Cleaning up previous containers (if any)..."
+docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+docker rm -f vps_chromadb vps_postgres vps_app vps_nginx vps_certbot 2>/dev/null || true
+
 echo "==> Starting full stack..."
 docker compose -f "$COMPOSE_FILE" up -d
 
