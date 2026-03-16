@@ -104,20 +104,28 @@ jobs:
                     # Reload nginx so it picks up the latest vps.conf (SSL config)
                     docker exec vps_nginx nginx -s reload 2>/dev/null || true
 
-                    # Expand cert to cover widget subdomain if not already included
+                    # Ensure cert covers both root and widget hostnames
                     CERT_FILE="./certbot/conf/live/144-91-77-107.sslip.io/fullchain.pem"
-                    if [ -f "$CERT_FILE" ] && ! openssl x509 -in "$CERT_FILE" -text -noout 2>/dev/null | grep -q "widget.144-91-77-107.sslip.io"; then
-                      echo "Expanding certificate to include widget subdomain..."
-                      docker compose -f docker-compose.prod.vps.yml run --rm --entrypoint certbot certbot \
+                    NEED_CERT_UPDATE=0
+                    if [ ! -f "$CERT_FILE" ]; then
+                      echo "No certificate found yet, issuing initial certificate..."
+                      NEED_CERT_UPDATE=1
+                    elif ! openssl x509 -in "$CERT_FILE" -text -noout 2>/dev/null | grep -q "widget.144-91-77-107.sslip.io"; then
+                      echo "Certificate found but missing widget SAN, expanding..."
+                      NEED_CERT_UPDATE=1
+                    else
+                      echo "✓ Certificate already covers widget subdomain"
+                    fi
+
+                    if [ "$NEED_CERT_UPDATE" -eq 1 ]; then
+                      timeout 600 docker compose -f docker-compose.prod.vps.yml run --rm certbot-init \
                         certonly --webroot -w /var/www/certbot \
                         --email jakub.havlas.022@pslib.cz \
-                        --agree-tos --no-eff-email --expand \
+                        --agree-tos --no-eff-email --non-interactive --expand --verbose \
                         -d 144-91-77-107.sslip.io \
                         -d widget.144-91-77-107.sslip.io \
                         && docker exec vps_nginx nginx -s reload \
-                        || echo "⚠️  certbot expand failed, check logs"
-                    else
-                      echo "✓ Certificate already covers widget subdomain"
+                        || echo "⚠️  certbot issue/expand failed, check logs"
                     fi
 
                     # Wait for services to be healthy with detailed logging
