@@ -66,17 +66,13 @@ jobs:
 
             - name: Deploy with Docker Compose (pull image)
               run: |
-                  if [ -z "${{ secrets.ENV_FILE }}" ] || [ -z "${{ secrets.JWT_SECRET }}" ] || [ -z "${{ secrets.API_SECRET }}" ]; then
-                    echo "Missing required secrets: ENV_FILE, JWT_SECRET, or API_SECRET"
+                  if [ -z "${{ secrets.ENV_FILE }}" ]; then
+                    echo "Missing required secret: ENV_FILE"
                     exit 1
                   fi
 
                   cat > /tmp/myapp.env <<'ENVEOF'
                   ${{ secrets.ENV_FILE }}
-                  JWT_SECRET=${{ secrets.JWT_SECRET }}
-                  API_SECRET=${{ secrets.API_SECRET }}
-                  ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
-                  ALLOWED_IPS=${{ secrets.ALLOWED_IPS }}
                   ENVEOF
 
                   scp /tmp/myapp.env ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/myapp.env
