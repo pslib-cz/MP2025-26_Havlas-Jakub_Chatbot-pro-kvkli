@@ -8,7 +8,7 @@
 # Prerequisites:
 #   - Port 80 and 443 open on the VPS firewall (ufw allow 80; ufw allow 443)
 #   - Docker + docker compose installed
-#   - Run from /var/www/apollo (where this repo lives)
+#   - Run inside the deployed app project directory (for example /var/www/myapp)
 #
 # Usage:
 #   chmod +x scripts/init-letsencrypt-vps.sh
@@ -17,19 +17,27 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT=""
+
+# Support both layouts:
+# 1) <project>/scripts/init-letsencrypt-vps.sh
+# 2) <repo>/app/scripts/init-letsencrypt-vps.sh
+for candidate in "$SCRIPT_DIR/.." "$SCRIPT_DIR/../app"; do
+    if [ -f "$candidate/docker-compose.prod.vps.yml" ] && [ -d "$candidate/nginx" ]; then
+        PROJECT_ROOT="$(cd "$candidate" && pwd)"
+        break
+    fi
+done
+
+if [ -z "$PROJECT_ROOT" ]; then
+    echo "ERROR: Could not locate project root with docker-compose.prod.vps.yml and nginx/."
+    echo "Checked: $SCRIPT_DIR/.. and $SCRIPT_DIR/../app"
+    echo "Tip: run this script from the deployed app directory (for example /var/www/myapp)."
+    exit 1
+fi
+
 cd "$PROJECT_ROOT"
-
-if [ ! -f "docker-compose.prod.vps.yml" ]; then
-    echo "ERROR: docker-compose.prod.vps.yml not found."
-    echo "Run this script from inside the app project or keep it under app/scripts/."
-    exit 1
-fi
-
-if [ ! -d "nginx" ]; then
-    echo "ERROR: nginx directory not found at $PROJECT_ROOT/nginx"
-    exit 1
-fi
+echo "==> Using project root: $PROJECT_ROOT"
 
 DOMAIN="144-91-77-107.sslip.io"
 WIDGET_DOMAIN="widget.144-91-77-107.sslip.io"
