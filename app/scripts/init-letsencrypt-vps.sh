@@ -14,7 +14,22 @@
 #   chmod +x scripts/init-letsencrypt-vps.sh
 #   sudo ./scripts/init-letsencrypt-vps.sh
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+if [ ! -f "docker-compose.prod.vps.yml" ]; then
+    echo "ERROR: docker-compose.prod.vps.yml not found."
+    echo "Run this script from inside the app project or keep it under app/scripts/."
+    exit 1
+fi
+
+if [ ! -d "nginx" ]; then
+    echo "ERROR: nginx directory not found at $PROJECT_ROOT/nginx"
+    exit 1
+fi
 
 DOMAIN="144-91-77-107.sslip.io"
 WIDGET_DOMAIN="widget.144-91-77-107.sslip.io"
