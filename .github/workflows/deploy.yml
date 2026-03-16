@@ -123,7 +123,7 @@ jobs:
                     docker compose -f docker-compose.prod.vps.yml up -d
 
                     # Reload nginx so it picks up the latest vps.conf (SSL config)
-                    docker exec vps_nginx nginx -s reload 2>/dev/null || true
+                    docker compose -f docker-compose.prod.vps.yml exec -T nginx nginx -s reload 2>/dev/null || true
 
                     # Ensure cert covers both root and widget hostnames
                     CERT_FILE="./certbot/conf/live/144-91-77-107.sslip.io/fullchain.pem"
@@ -145,10 +145,10 @@ jobs:
                         --agree-tos --no-eff-email --non-interactive --expand --verbose \
                         -d 144-91-77-107.sslip.io \
                         -d widget.144-91-77-107.sslip.io; then
-                        docker exec vps_nginx nginx -s reload
+                        docker compose -f docker-compose.prod.vps.yml exec -T nginx nginx -s reload
                       else
                         echo "ERROR: certbot issue/expand failed"
-                        docker logs vps_nginx --tail 100 || true
+                        docker compose -f docker-compose.prod.vps.yml logs --no-color --tail 100 nginx || true
                         exit 1
                       fi
                     fi
@@ -163,24 +163,27 @@ jobs:
                     for i in {1..60}; do
                       echo "Check $i/60..."
                       docker compose -f docker-compose.prod.vps.yml ps
-                      CHROMA_STATUS=$(docker inspect vps_chromadb --format="{{.State.Health.Status}}" 2>/dev/null || echo "unknown")
+                      CHROMA_CID=$(docker compose -f docker-compose.prod.vps.yml ps -q chromadb)
+                      DB_CID=$(docker compose -f docker-compose.prod.vps.yml ps -q db)
+                      CHROMA_STATUS=$(docker inspect "$CHROMA_CID" --format="{{.State.Health.Status}}" 2>/dev/null || echo "unknown")
+                      DB_STATUS=$(docker inspect "$DB_CID" --format="{{.State.Health.Status}}" 2>/dev/null || echo "unknown")
                       echo "ChromaDB health status: $CHROMA_STATUS"
+                      echo "Postgres health status: $DB_STATUS"
                       if [ "$CHROMA_STATUS" = "unhealthy" ]; then
                         echo "⚠️  ChromaDB is unhealthy, showing logs:"
-                        docker logs vps_chromadb --tail 100
+                        docker compose -f docker-compose.prod.vps.yml logs --no-color --tail 100 chromadb
                         echo ""
                         echo "Last health check output:"
-                        docker inspect vps_chromadb --format="{{range .State.Health.Log}}{{.Output}}{{end}}" | tail -20
+                        docker inspect "$CHROMA_CID" --format="{{range .State.Health.Log}}{{.Output}}{{end}}" | tail -20
                       fi
-                      HEALTHY_COUNT=$(docker compose -f docker-compose.prod.vps.yml ps | grep -E "(vps_chromadb|vps_postgres)" | grep -c "healthy" || echo "0")
-                      if [ "$HEALTHY_COUNT" -eq 2 ]; then
+                      if [ "$CHROMA_STATUS" = "healthy" ] && [ "$DB_STATUS" = "healthy" ]; then
                         echo "✓ All services healthy"
                         break
                       fi
                       if [ $i -eq 60 ]; then
                         echo "❌ Timeout waiting for services to be healthy"
-                        docker logs vps_chromadb --tail 200
-                        docker logs vps_postgres --tail 100
+                        docker compose -f docker-compose.prod.vps.yml logs --no-color --tail 200 chromadb
+                        docker compose -f docker-compose.prod.vps.yml logs --no-color --tail 100 db
                         exit 1
                       fi
                       sleep 2
