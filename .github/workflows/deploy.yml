@@ -66,17 +66,27 @@ jobs:
 
             - name: Deploy with Docker Compose (pull image)
               run: |
+                  if [ -z "${{ secrets.ENV_FILE }}" ] || [ -z "${{ secrets.JWT_SECRET }}" ] || [ -z "${{ secrets.API_SECRET }}" ]; then
+                    echo "Missing required secrets: ENV_FILE, JWT_SECRET, or API_SECRET"
+                    exit 1
+                  fi
+
+                  cat > /tmp/myapp.env <<'ENVEOF'
+                  ${{ secrets.ENV_FILE }}
+                  JWT_SECRET=${{ secrets.JWT_SECRET }}
+                  API_SECRET=${{ secrets.API_SECRET }}
+                  ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+                  ALLOWED_IPS=${{ secrets.ALLOWED_IPS }}
+                  ENVEOF
+
+                  scp /tmp/myapp.env ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/myapp.env
+
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
                     set -e
                     cd /var/www/myapp
 
-                    cat << "ENVEOF" > .env
-                    ${{ secrets.ENV_FILE }}
-                    JWT_SECRET=${{ secrets.JWT_SECRET }}
-                    API_SECRET=${{ secrets.API_SECRET }}
-                    ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
-                    ALLOWED_IPS=${{ secrets.ALLOWED_IPS }}
-                    ENVEOF
+                    install -m 600 /tmp/myapp.env .env
+                    rm -f /tmp/myapp.env
 
                     # Ensure TLS params exist (only generated once, ~30s)
                     if [ ! -f ./certbot/conf/options-ssl-nginx.conf ]; then
@@ -167,3 +177,5 @@ jobs:
                     echo "Running integration tests..."
                     docker compose -f docker-compose.prod.vps.yml exec -T app npm run test:integration || echo "⚠️  Integration tests failed, but deployment continues"
                   '
+
+                  rm -f /tmp/myapp.env
