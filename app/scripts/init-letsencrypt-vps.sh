@@ -47,6 +47,12 @@ COMPOSE_FILE="docker-compose.prod.vps.yml"
 echo "==> Creating required directories..."
 mkdir -p ./certbot/conf ./certbot/www ./widget
 
+# Clear stale named containers before first compose up.
+# This makes the bootstrap rerunnable after partial/failed attempts.
+echo "==> Pre-cleaning old containers (if any)..."
+docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+docker rm -f vps_chromadb vps_postgres vps_app vps_nginx vps_certbot 2>/dev/null || true
+
 # ── Step 1: start nginx with HTTP-only stub so the ACME challenge can proceed ─
 echo "==> Writing temporary HTTP-only nginx config..."
 cat > ./nginx/vps.conf << 'TMPCONF'
