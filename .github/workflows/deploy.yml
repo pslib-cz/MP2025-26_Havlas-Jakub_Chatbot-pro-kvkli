@@ -76,9 +76,20 @@ jobs:
                   ${{ secrets.ENV_FILE }}
                   ENVEOF
 
+                  NGINX_CONF_SOURCE=""
+                  if [ -f app/nginx/vps.conf ]; then
+                    NGINX_CONF_SOURCE="app/nginx/vps.conf"
+                  elif [ -f app/nginx/widget.conf ]; then
+                    NGINX_CONF_SOURCE="app/nginx/widget.conf"
+                  else
+                    echo "Missing nginx config file: expected app/nginx/vps.conf or app/nginx/widget.conf"
+                    ls -la app/nginx || true
+                    exit 1
+                  fi
+
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} 'mkdir -p /var/www/myapp/nginx'
                   scp app/docker-compose.prod.vps.yml ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/myapp/docker-compose.prod.vps.yml
-                  scp app/nginx/vps.conf ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/myapp/nginx/vps.conf
+                  scp "$NGINX_CONF_SOURCE" ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/myapp/nginx/vps.conf
                   scp /tmp/myapp.env ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/myapp.env
 
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
