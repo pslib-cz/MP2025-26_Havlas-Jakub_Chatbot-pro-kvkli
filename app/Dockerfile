@@ -21,6 +21,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 COPY --from=builder /app ./
+RUN npm prune --omit=dev
 
 EXPOSE 3000
 CMD ["npm", "start"]

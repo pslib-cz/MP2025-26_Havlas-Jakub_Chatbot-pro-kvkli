@@ -10,7 +10,6 @@ on:
 jobs:
     test:
         runs-on: ubuntu-latest
-
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
@@ -34,13 +33,26 @@ jobs:
               working-directory: ./app
               run: npm run test:smoke
 
-    deploy:
+    build-and-deploy:
         needs: test
         runs-on: ubuntu-latest
-
         steps:
             - name: Checkout repository
               uses: actions/checkout@v4
+
+            - name: Log in to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build and push Docker image
+              uses: docker/build-push-action@v5
+              with:
+                  context: ./app
+                  push: true
+                  tags: ghcr.io/${{ github.repository_owner }}/kvkli-app:latest
 
             - name: Setup SSH agent
               uses: webfactory/ssh-agent@v0.9.0
@@ -51,130 +63,83 @@ jobs:
               run: |
                   mkdir -p ~/.ssh
                   ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
-                  cat >> ~/.ssh/config << EOF
-                  Host *
-                    ServerAliveInterval 15
-                    ServerAliveCountMax 20
-                    TCPKeepAlive yes
-                    ConnectTimeout 30
-                  EOF
 
-            - name: Ensure target directory exists
+            - name: Deploy with Docker Compose (pull image)
               run: |
-                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/myapp && sudo chown -R \$(whoami):\$(whoami) /var/www/myapp"
+                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} '
+                    set -e
+                    cd /var/www/myapp
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v4
-              with:
-                  node-version: "20"
-                  cache: "npm"
-                  cache-dependency-path: app/package-lock.json
+                    cat << "ENVEOF" > .env
+                    ${{ secrets.ENV_FILE }}
+                    JWT_SECRET=${{ secrets.JWT_SECRET }}
+                    API_SECRET=${{ secrets.API_SECRET }}
+                    ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
+                    ALLOWED_IPS=${{ secrets.ALLOWED_IPS }}
+                    ENVEOF
 
-            - name: Build widget.js
-              working-directory: ./app
-              run: |
-                  npm ci
-                  node build-widget.mjs
-                  mkdir -p widget
-                  cp widget.js widget/widget.js
+                    # Ensure TLS params exist (only generated once, ~30s)
+                    if [ ! -f ./certbot/conf/options-ssl-nginx.conf ]; then
+                      curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf \
+                        -o ./certbot/conf/options-ssl-nginx.conf
+                    fi
+                    if [ ! -f ./certbot/conf/ssl-dhparams.pem ]; then
+                      echo "Generating DH params (~30s)..."
+                      openssl dhparam -out ./certbot/conf/ssl-dhparams.pem 2048
+                    fi
 
-            - name: Sync app files to VPS
-              run: |
-                  rsync -az \
-                    --delete \
-                    --exclude=node_modules \
-                    --exclude=.env \
-                    --exclude=logs \
-                    --exclude=chroma_db \
-                    --exclude=postgres_data \
-                    --exclude=certbot \
-                    app/ \
-                    ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/myapp/
+                    # Stop and remove all containers including orphans
+                    docker compose -f docker-compose.prod.vps.yml down --remove-orphans
 
-            - name: Deploy with Docker Compose
-              run: |
-                  ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=20 \
-                    ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-                      set -e
-                      cd /var/www/myapp
+                    # Remove any dangling containers with the same names
+                    docker rm -f vps_chromadb vps_postgres vps_app vps_nginx vps_certbot 2>/dev/null || true
 
-                      cat << 'ENVEOF' > .env
-                  ${{ secrets.ENV_FILE }}
-                  JWT_SECRET=${{ secrets.JWT_SECRET }}
-                  API_SECRET=${{ secrets.API_SECRET }}
-                  ALLOWED_ORIGINS=${{ secrets.ALLOWED_ORIGINS }}
-                  ALLOWED_IPS=${{ secrets.ALLOWED_IPS }}
-                  ENVEOF
+                    # Prune old images to free disk space
+                    docker image prune -f
 
-                      # Ensure TLS params exist (only generated once, ~30s)
-                      if [ ! -f ./certbot/conf/options-ssl-nginx.conf ]; then
-                        curl -s https://raw.githubusercontent.com/certbot/certbot/master/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf \
-                          -o ./certbot/conf/options-ssl-nginx.conf
-                      fi
-                      if [ ! -f ./certbot/conf/ssl-dhparams.pem ]; then
-                        echo "Generating DH params (~30s)..."
-                        openssl dhparam -out ./certbot/conf/ssl-dhparams.pem 2048
-                      fi
+                    # Pull latest image and start services
+                    docker compose -f docker-compose.prod.vps.yml pull
+                    docker compose -f docker-compose.prod.vps.yml up -d
 
-                      # Stop and remove all containers including orphans
-                      docker compose -f docker-compose.prod.vps.yml down --remove-orphans
-                      
-                      # Remove any dangling containers with the same names
-                      docker rm -f vps_chromadb vps_postgres vps_app vps_nginx vps_certbot 2>/dev/null || true
-                      
-                      # Prune old images to free disk space and speed up builds
-                      docker image prune -f
-                      
-                      # Build and start services
-                      docker compose -f docker-compose.prod.vps.yml build --progress=plain 2>&1 | tail -n 5
-                      docker compose -f docker-compose.prod.vps.yml up -d
-                      
-                      # Reload nginx so it picks up the latest vps.conf (SSL config)
-                      docker exec vps_nginx nginx -s reload 2>/dev/null || true
-                      
-                      # Wait for services to be healthy with detailed logging
-                      echo "Waiting for services to be healthy..."
-                      for i in {1..60}; do
-                        echo "Check $i/60..."
-                        docker compose -f docker-compose.prod.vps.yml ps
-                        
-                        # Check ChromaDB health specifically
-                        CHROMA_STATUS=$(docker inspect vps_chromadb --format='{{.State.Health.Status}}' 2>/dev/null || echo "unknown")
-                        echo "ChromaDB health status: $CHROMA_STATUS"
-                        
-                        if [ "$CHROMA_STATUS" = "unhealthy" ]; then
-                          echo "⚠️  ChromaDB is unhealthy, showing logs:"
-                          docker logs vps_chromadb --tail 100
-                          echo ""
-                          echo "Last health check output:"
-                          docker inspect vps_chromadb --format='{{range .State.Health.Log}}{{.Output}}{{end}}' | tail -20
-                        fi
-                        
-                        # Check if all required services are healthy
-                        HEALTHY_COUNT=$(docker compose -f docker-compose.prod.vps.yml ps | grep -E "(vps_chromadb|vps_postgres)" | grep -c "healthy" || echo "0")
-                        if [ "$HEALTHY_COUNT" -eq 2 ]; then
-                          echo "✓ All services healthy"
-                          break
-                        fi
-                        
-                        if [ $i -eq 60 ]; then
-                          echo "❌ Timeout waiting for services to be healthy"
-                          docker logs vps_chromadb --tail 200
-                          docker logs vps_postgres --tail 100
-                          exit 1
-                        fi
-                        
-                        sleep 2
-                      done
-                      
-                      # Final status check
-                      echo "Final service status:"
+                    # Reload nginx so it picks up the latest vps.conf (SSL config)
+                    docker exec vps_nginx nginx -s reload 2>/dev/null || true
+
+                    # Wait for services to be healthy with detailed logging
+                    echo "Waiting for services to be healthy..."
+                    for i in {1..60}; do
+                      echo "Check $i/60..."
                       docker compose -f docker-compose.prod.vps.yml ps
-                      
-                      # Run Prisma migrations
-                      docker compose -f docker-compose.prod.vps.yml exec -T app npx prisma migrate deploy
-                      
-                      # Run integration tests to verify ChromaDB connectivity
-                      echo "Running integration tests..."
-                      docker compose -f docker-compose.prod.vps.yml exec -T app npm run test:integration || echo "⚠️  Integration tests failed, but deployment continues"
-                  EOF
+                      CHROMA_STATUS=$(docker inspect vps_chromadb --format="{{.State.Health.Status}}" 2>/dev/null || echo "unknown")
+                      echo "ChromaDB health status: $CHROMA_STATUS"
+                      if [ "$CHROMA_STATUS" = "unhealthy" ]; then
+                        echo "⚠️  ChromaDB is unhealthy, showing logs:"
+                        docker logs vps_chromadb --tail 100
+                        echo ""
+                        echo "Last health check output:"
+                        docker inspect vps_chromadb --format="{{range .State.Health.Log}}{{.Output}}{{end}}" | tail -20
+                      fi
+                      HEALTHY_COUNT=$(docker compose -f docker-compose.prod.vps.yml ps | grep -E "(vps_chromadb|vps_postgres)" | grep -c "healthy" || echo "0")
+                      if [ "$HEALTHY_COUNT" -eq 2 ]; then
+                        echo "✓ All services healthy"
+                        break
+                      fi
+                      if [ $i -eq 60 ]; then
+                        echo "❌ Timeout waiting for services to be healthy"
+                        docker logs vps_chromadb --tail 200
+                        docker logs vps_postgres --tail 100
+                        exit 1
+                      fi
+                      sleep 2
+                    done
+
+                    # Final status check
+                    echo "Final service status:"
+                    docker compose -f docker-compose.prod.vps.yml ps
+
+                    # Run Prisma migrations
+                    docker compose -f docker-compose.prod.vps.yml exec -T app npx prisma migrate deploy
+
+                    # Run integration tests to verify ChromaDB connectivity
+                    echo "Running integration tests..."
+                    docker compose -f docker-compose.prod.vps.yml exec -T app npm run test:integration || echo "⚠️  Integration tests failed, but deployment continues"
+                  '
