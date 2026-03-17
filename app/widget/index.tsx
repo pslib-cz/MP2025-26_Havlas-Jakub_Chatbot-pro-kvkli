@@ -77,7 +77,7 @@ function injectStyles() {
 function getBackendUrl(): string {
     // Priority 1: data-backend attribute on the script tag
     const script =
-        document.currentScript as HTMLScriptElement | null ||
+        (document.currentScript as HTMLScriptElement | null) ||
         document.querySelector<HTMLScriptElement>("script[data-backend]");
     const attr = script?.dataset?.backend;
     // empty string means "same origin" — widget.js served from the backend itself
@@ -95,8 +95,7 @@ function getBackendUrl(): string {
 function mount() {
     injectStyles();
 
-    //const backendUrl = getBackendUrl();
-    const backendUrl = "https://144-91-77-107.sslip.io"; // Hardcoded for testing — replace with the line above for dynamic detection
+    const backendUrl = getBackendUrl();
     const container = document.createElement("div");
     container.id = "cw-root";
     document.body.appendChild(container);
@@ -104,7 +103,7 @@ function mount() {
     createRoot(container).render(
         <React.StrictMode>
             <ChatWidget backendUrl={backendUrl} />
-        </React.StrictMode>
+        </React.StrictMode>,
     );
 }
 
