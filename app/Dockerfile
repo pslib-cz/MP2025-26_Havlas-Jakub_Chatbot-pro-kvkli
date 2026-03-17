@@ -14,6 +14,7 @@ COPY . .
 
 RUN npx prisma generate
 RUN npm run build
+RUN npm run build:widget
 
 # runner
 FROM node:20-bookworm-slim AS runner
