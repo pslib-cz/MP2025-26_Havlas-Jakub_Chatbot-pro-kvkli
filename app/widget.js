@@ -84,7 +84,7 @@ Error generating stack: `+u.message+`
   .cw-btn-wrap{display:flex;justify-content:center;padding-bottom:16px;}
   .cw-window{width:100%;height:100dvh;height:100vh;border-radius:0;position:fixed;inset:0;}
 }
-`;function mh(){if(document.getElementById("cw-styles"))return;let l=document.createElement("style");l.id="cw-styles",l.textContent=yh,document.head.appendChild(l)}function Ws(){mh();let l="https://144-91-77-107.sslip.io",t=document.createElement("div");t.id="cw-root",document.body.appendChild(t),(0,$s.createRoot)(t).render($n.default.createElement($n.default.StrictMode,null,$n.default.createElement(Rf,{backendUrl:l})))}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",Ws):Ws();})();
+`;function mh(){if(document.getElementById("cw-styles"))return;let l=document.createElement("style");l.id="cw-styles",l.textContent=yh,document.head.appendChild(l)}function Ws(){mh();let l="https://chatbot.144-91-77-107.sslip.io/api/graphql",t=document.createElement("div");t.id="cw-root",document.body.appendChild(t),(0,$s.createRoot)(t).render($n.default.createElement($n.default.StrictMode,null,$n.default.createElement(Rf,{backendUrl:l})))}document.readyState==="loading"?document.addEventListener("DOMContentLoaded",Ws):Ws();})();
 /*! Bundled license information:
 
 react/cjs/react.production.js:
