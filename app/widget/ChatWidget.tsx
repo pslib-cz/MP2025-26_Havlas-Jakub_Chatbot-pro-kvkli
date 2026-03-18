@@ -203,7 +203,10 @@ interface ChatWidgetProps {
 }
 
 export default function ChatWidget({ backendUrl }: ChatWidgetProps) {
-    const gqlUrl = `${backendUrl}/api/graphql`;
+    const normalizedBackendUrl = backendUrl.replace(/\/$/, "");
+    const gqlUrl = normalizedBackendUrl.endsWith("/api/graphql")
+        ? normalizedBackendUrl
+        : `${normalizedBackendUrl}/api/graphql`;
 
     const [serverAvailable, setServerAvailable] = useState(false);
     const [isOpen, setIsOpen] = useState(false);

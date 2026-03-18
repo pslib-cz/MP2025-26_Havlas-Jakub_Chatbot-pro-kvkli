@@ -80,22 +80,24 @@ function getBackendUrl(): string {
         (document.currentScript as HTMLScriptElement | null) ||
         document.querySelector<HTMLScriptElement>("script[data-backend]");
     const attr = script?.dataset?.backend;
-    // empty string means "same origin" — widget.js served from the backend itself
-    if (typeof attr === "string") return attr.replace(/\/$/, "");
+    if (typeof attr === "string" && attr.trim() !== "") return attr.replace(/\/$/, "");
 
     // Priority 2: global variable set before the script tag
-    if (typeof (window as any).CHATBOT_BACKEND_URL === "string") {
+    if (
+        typeof (window as any).CHATBOT_BACKEND_URL === "string" &&
+        (window as any).CHATBOT_BACKEND_URL.trim() !== ""
+    ) {
         return (window as any).CHATBOT_BACKEND_URL.replace(/\/$/, "");
     }
 
-    // Priority 3: same origin (widget.js served directly from the backend)
-    return "";
+    // Priority 3: production default
+    return "https://chatbot.144-91-77-107.sslip.io";
 }
 
 function mount() {
     injectStyles();
 
-    const backendUrl = "https://chatbot.144-91-77-107.sslip.io/api/graphql";
+    const backendUrl = getBackendUrl();
     const container = document.createElement("div");
     container.id = "cw-root";
     document.body.appendChild(container);
