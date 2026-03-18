@@ -95,7 +95,7 @@ function getBackendUrl(): string {
 function mount() {
     injectStyles();
 
-    const backendUrl = getBackendUrl();
+    const backendUrl = "https://chatbot.144-91-77-107.sslip.io/api/graphql";
     const container = document.createElement("div");
     container.id = "cw-root";
     document.body.appendChild(container);
