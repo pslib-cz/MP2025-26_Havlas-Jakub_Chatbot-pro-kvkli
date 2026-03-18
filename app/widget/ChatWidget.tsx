@@ -203,7 +203,15 @@ interface ChatWidgetProps {
 }
 
 export default function ChatWidget({ backendUrl }: ChatWidgetProps) {
-    const normalizedBackendUrl = backendUrl.replace(/\/$/, "");
+    // FORCE correct endpoint: if wrong domain detected, override to chatbot subdomain
+    let correctedUrl = backendUrl || "https://chatbot.144-91-77-107.sslip.io/api/graphql";
+    
+    // If URL contains the base domain WITHOUT chatbot subdomain, FORCE the fix
+    if (correctedUrl.includes("144-91-77-107.sslip.io") && !correctedUrl.includes("chatbot.")) {
+        correctedUrl = correctedUrl.replace("144-91-77-107.sslip.io", "chatbot.144-91-77-107.sslip.io");
+    }
+    
+    const normalizedBackendUrl = correctedUrl.replace(/\/$/, "");
     const gqlUrl = normalizedBackendUrl.endsWith("/api/graphql")
         ? normalizedBackendUrl
         : `${normalizedBackendUrl}/api/graphql`;

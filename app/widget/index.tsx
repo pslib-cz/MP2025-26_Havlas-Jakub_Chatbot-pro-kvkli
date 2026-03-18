@@ -75,23 +75,34 @@ function injectStyles() {
 }
 
 function getBackendUrl(): string {
-    // Priority 1: data-backend attribute on the script tag
+    // Priority 1: data-backend attribute on the script tag (MUST be full backend URL or path)
     const script =
         (document.currentScript as HTMLScriptElement | null) ||
         document.querySelector<HTMLScriptElement>("script[data-backend]");
     const attr = script?.dataset?.backend;
-    if (typeof attr === "string" && attr.trim() !== "") return attr.replace(/\/$/, "");
+    if (typeof attr === "string" && attr.trim() !== "" && attr.trim() !== "/") {
+        // If it's a relative path, prepend the chatbot subdomain
+        if (attr.startsWith("/")) {
+            return `https://chatbot.144-91-77-107.sslip.io${attr}`;
+        }
+        return attr.replace(/\/$/, "");
+    }
 
     // Priority 2: global variable set before the script tag
     if (
         typeof (window as any).CHATBOT_BACKEND_URL === "string" &&
         (window as any).CHATBOT_BACKEND_URL.trim() !== ""
     ) {
-        return (window as any).CHATBOT_BACKEND_URL.replace(/\/$/, "");
+        const url = (window as any).CHATBOT_BACKEND_URL.trim();
+        // Ensure it uses chatbot subdomain
+        if (url.includes("144-91-77-107.sslip.io") && !url.includes("chatbot.")) {
+            return url.replace("144-91-77-107.sslip.io", "chatbot.144-91-77-107.sslip.io").replace(/\/$/, "");
+        }
+        return url.replace(/\/$/, "");
     }
 
-    // Priority 3: production default
-    return "https://chatbot.144-91-77-107.sslip.io";
+    // Priority 3: FORCED production default - ALWAYS chatbot subdomain
+    return "https://chatbot.144-91-77-107.sslip.io/api/graphql";
 }
 
 function mount() {
