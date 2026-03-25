@@ -65,6 +65,10 @@ jobs:
                   mkdir -p ~/.ssh
                   ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
+            - name: Copy docker-compose to VPS
+              run: |
+                  scp app/docker-compose.prod.vps.yml ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/docker-compose.prod.vps.yml
+
             - name: Deploy with Docker Compose (pull image)
               run: |
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash << 'EOF'
