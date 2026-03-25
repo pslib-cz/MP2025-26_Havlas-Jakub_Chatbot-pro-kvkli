@@ -67,10 +67,8 @@ jobs:
 
             - name: Deploy with Docker Compose (pull image)
               run: |
-                  VPS="${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}"
-                  ssh "$VPS" << 'EOF'
+                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} bash << 'EOF'
                   cd /var/www/apollo
-
                   docker compose -f docker-compose.prod.vps.yml pull
                   docker compose -f docker-compose.prod.vps.yml up -d --remove-orphans
                   EOF
