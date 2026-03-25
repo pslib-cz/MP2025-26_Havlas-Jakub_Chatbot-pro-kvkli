@@ -2,6 +2,7 @@
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 ARG CACHEBUST=1
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci
 
@@ -9,6 +10,7 @@ RUN npm ci
 FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 ARG CACHEBUST=1
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
@@ -20,6 +22,7 @@ RUN npm run build:widget
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
 # Copy only what Next.js needs
 COPY --from=builder /app/.next/standalone ./

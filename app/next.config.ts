@@ -2,9 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
  reactStrictMode: true,
+ output: "standalone",
  
  // Set workspace root to silence lockfile warning
- outputFileTracingRoot: 'C:\\Users\\Kuba\\Documents\\repos\\MP2025-26_Havlas-Jakub_Chatbot-pro-kvkli\\app',
+ outputFileTracingRoot: process.cwd(),
  
  // Exclude large files from serverless functions
  outputFileTracingExcludes: {
