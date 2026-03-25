@@ -1,6 +1,6 @@
 services:
     app:
-        container_name: minicms-app
+        container_name: myapp
         build: .
         restart: always
         env_file:
