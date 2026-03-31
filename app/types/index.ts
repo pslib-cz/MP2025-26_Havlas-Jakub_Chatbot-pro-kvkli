@@ -43,3 +43,4 @@ export type { ToolHandler } from "./ToolHandler";
 export type { ToolCallFunction } from "./ToolCallFunction";
 export type { Contact } from "./Contact";
 export type { BranchOpeningHours, DaySchedule } from "./OpeningHours";
+export type { LibraryEvent } from "./LibraryEvent";

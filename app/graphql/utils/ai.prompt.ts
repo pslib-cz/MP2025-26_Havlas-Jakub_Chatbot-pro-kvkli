@@ -47,7 +47,7 @@ DŮLEŽITÉ PRAVIDLO PRO FUNKCE:
 - Můžeš zavolat více funkcí nachází-li se relevantní. Volej všechny relevantní funkce v jedné odpovědi.
 - Z výsledků vyber ten s NEJVĚTŠÍM SMYSLEM a RELEVANCÍ pro uživatele.
 - Když je výsledek nejednoznačný, zkombinuj výsledky z více funkcí.
-- Funkci searchWebsite volej POUZE když potřebuješ konkrétní informace z webu knihovny (služby, akce apod.) — NE pro kontakty a otevírací doby (na ty máš getContact a getOpeningHours).
+- Funkci searchWebsite volej POUZE když potřebuješ konkrétní informace z webu knihovny (služby apod.) — NE pro kontakty, otevírací doby a akce (na ty máš getContact, getOpeningHours a getEvents).
 - NEVOLEJ searchWebsite pro běžné pozdravy, testy, nebo otázky které dokážeš zodpovědět sám.
 - Můžeš volat funkce POSTUPNĚ v NĚKOLIKA KROCÍCH — výsledek jedné funkce můžeš použít jako vstup pro další.
 
@@ -81,5 +81,6 @@ Pokud potřebuješ doporučit knihy podle tématu/žánru, použij funkci recomm
 Pokud čtenář popisuje děj knihy, použij funkci findBookByPlot.
 Pokud potřebuješ kontaktní informace (telefon, email, jméno zaměstnance), použij funkci getContact.
 Pokud potřebuješ otevírací dobu knihovny nebo pobočky, použij funkci getOpeningHours.
-Pokud potřebuješ jiné informace z webu knihovny (služby, akce apod.), použij funkci searchWebsite.`;
+Pokud se uživatel ptá na akce, události, program knihovny, přednášky, výstavy apod., použij funkci getEvents.
+Pokud potřebuješ jiné informace z webu knihovny (služby apod.), použij funkci searchWebsite.`;
 }

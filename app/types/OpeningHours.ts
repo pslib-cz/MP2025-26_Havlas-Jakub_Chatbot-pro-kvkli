@@ -6,4 +6,5 @@ export type DaySchedule = {
 export type BranchOpeningHours = {
     branch: string;
     schedule: DaySchedule[];
+    url: string;
 };

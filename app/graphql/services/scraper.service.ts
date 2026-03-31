@@ -4,10 +4,13 @@ import axios from "axios";
 import { parse } from "node-html-parser";
 import type { Contact } from "../../types/Contact";
 import type { BranchOpeningHours, DaySchedule } from "../../types/OpeningHours";
+import type { LibraryEvent } from "../../types/LibraryEvent";
 import LoggerService from "./logger.service";
 
 const CONTACTS_URL = "https://www.kvkli.cz/kontakt/kontakty-dle-oddeleni";
 const OPENING_HOURS_URL = "https://www.kvkli.cz/kontakt/oteviraci-doba";
+const EVENTS_URL = "https://www.kvkli.cz/akce?p=99";
+const BASE_URL = "https://www.kvkli.cz";
 const REQUEST_TIMEOUT = 10000;
 
 /**
@@ -29,6 +32,10 @@ export async function scrapeContacts(): Promise<Contact[]> {
 
     for (const h2 of departmentGroups) {
         const department = h2.text.trim();
+        const anchor = h2.getAttribute("id");
+        const departmentUrl = anchor
+            ? `${CONTACTS_URL}#${anchor}`
+            : CONTACTS_URL;
         const parent = h2.parentNode;
         if (!parent) continue;
 
@@ -78,6 +85,7 @@ export async function scrapeContacts(): Promise<Contact[]> {
                     department,
                     phones,
                     email,
+                    url: departmentUrl,
                 });
             }
         }
@@ -110,6 +118,10 @@ export async function scrapeOpeningHours(): Promise<BranchOpeningHours[]> {
         if (!h2) continue;
 
         const branch = h2.text.trim();
+        const anchor = h2.getAttribute("id");
+        const branchUrl = anchor
+            ? `${OPENING_HOURS_URL}#${anchor}`
+            : OPENING_HOURS_URL;
         const schedule: DaySchedule[] = [];
 
         const tabRows = wrap.querySelectorAll(".tabRow");
@@ -134,7 +146,7 @@ export async function scrapeOpeningHours(): Promise<BranchOpeningHours[]> {
             }
         }
 
-        branches.push({ branch, schedule });
+        branches.push({ branch, schedule, url: branchUrl });
     }
 
     LoggerService.info("Scraped opening hours from KVKLI website", {
@@ -142,4 +154,120 @@ export async function scrapeOpeningHours(): Promise<BranchOpeningHours[]> {
     });
 
     return branches;
+}
+
+/**
+ * Scrape upcoming events from the KVKLI website.
+ * Parses date headings (h2) and akce_item cards within each date section.
+ */
+export async function scrapeEvents(): Promise<LibraryEvent[]> {
+    const response = await axios.get(EVENTS_URL, {
+        timeout: REQUEST_TIMEOUT,
+        headers: { "User-Agent": "KVKLI-Chatbot/1.0" },
+    });
+
+    const root = parse(response.data);
+    const events: LibraryEvent[] = [];
+
+    const target = root.querySelector("#loadMoreTarget");
+    if (!target) {
+        LoggerService.warn("Could not find #loadMoreTarget on events page");
+        return events;
+    }
+
+    // Iterate through child nodes — h2 sets the current date, akce_list contains event items
+    let currentDate = "";
+    for (const child of target.childNodes) {
+        if (!("tagName" in child)) continue;
+        const el = child as import("node-html-parser").HTMLElement;
+
+        if (el.tagName === "H2") {
+            currentDate = el.text.trim();
+            continue;
+        }
+
+        if (!el.classList?.contains("akce_list")) continue;
+
+        const items = el.querySelectorAll(".akce_item");
+        for (const item of items) {
+            const link = item.querySelector("a");
+            if (!link) continue;
+
+            const href = link.getAttribute("href") ?? "";
+            const url = href.startsWith("http") ? href : `${BASE_URL}${href}`;
+
+            const title = link.querySelector("h3.label")?.text.trim() ?? "";
+
+            // Event type (e.g. "Přednáška", "Výstava")
+            const type =
+                link.querySelector(".top .r")?.text.trim() || undefined;
+
+            // Details line: date/time range and price
+            const detailsLeft =
+                link.querySelector(".details .l")?.text.trim() ?? "";
+
+            // Extract time — look for HH:MM pattern in the details
+            const timeMatch = detailsLeft.match(/\b(\d{1,2}:\d{2})\b/);
+            const time = timeMatch ? timeMatch[1] : undefined;
+
+            // Extract price — text after the separator
+            const sepEl = link.querySelector(".details .l .sep");
+            let price: string | undefined;
+            if (sepEl && sepEl.nextSibling) {
+                // Get text content after the separator within .details .l
+                const fullText =
+                    link.querySelector(".details .l")?.text.trim() ?? "";
+                const sepIdx = fullText.lastIndexOf("\n");
+                const afterSep =
+                    sepIdx >= 0 ? fullText.substring(sepIdx).trim() : undefined;
+                // Fallback: look for known price keywords
+                if (
+                    afterSep &&
+                    (afterSep.includes("zdarma") ||
+                        afterSep.includes("dobrovolné") ||
+                        afterSep.match(/\d+\s*Kč/))
+                ) {
+                    price = afterSep;
+                } else {
+                    // Try matching from full text
+                    const priceMatch = fullText.match(
+                        /(zdarma|dobrovolné|\d+\s*Kč)/i,
+                    );
+                    price = priceMatch ? priceMatch[1] : undefined;
+                }
+            }
+
+            // Location
+            const location =
+                link.querySelector(".location .em")?.text.trim() || undefined;
+
+            // Image
+            const imgEl = link.querySelector(".img img");
+            const imgSrc = imgEl?.getAttribute("src");
+            const imageUrl = imgSrc
+                ? imgSrc.startsWith("http")
+                    ? imgSrc
+                    : `${BASE_URL}${imgSrc}`
+                : undefined;
+
+            if (title) {
+                events.push({
+                    title,
+                    date: currentDate,
+                    time,
+                    type,
+                    price,
+                    location,
+                    url,
+                    imageUrl,
+                });
+            }
+        }
+    }
+
+    LoggerService.info("Scraped events from KVKLI website", {
+        count: events.length,
+    });
+
+    return events;
 }

@@ -10,7 +10,7 @@ import { vectorService } from "../book.service";
 import { searchSimilarContent } from "../site.service";
 import { queryCatalogService } from "../queryCatalog.service";
 import { contactService } from "../contact.service";
-import { scrapeOpeningHours } from "../scraper.service";
+import { scrapeOpeningHours, scrapeEvents } from "../scraper.service";
 import LoggerService from "../logger.service";
 import type { BookItem } from "../../../types";
 
@@ -49,6 +49,11 @@ const GetContactSchema = z
 
 const GetOpeningHoursSchema = z.object({
     branch: z.string().optional(),
+});
+
+const GetEventsSchema = z.object({
+    type: z.string().optional(),
+    maxResults: z.number().optional(),
 });
 
 // ─── OpenAI Function Specs ────────────────────────────────────────────────────
@@ -200,6 +205,30 @@ const getOpeningHoursSpec: ChatCompletionTool = {
                     type: "string",
                     description:
                         "Optional branch name to filter (e.g. 'Hlavní budova', 'Vesec', 'Ruprechtice', 'Machnín'). If omitted, returns all branches.",
+                },
+            },
+        },
+    },
+};
+
+const getEventsSpec: ChatCompletionTool = {
+    type: "function",
+    function: {
+        name: "getEvents",
+        description:
+            "Get upcoming events at the library (lectures, exhibitions, workshops, concerts, readings, etc.). Scrapes live data from the library website. Use this when the user asks about events, what's happening at the library, upcoming programs, or cultural activities.",
+        parameters: {
+            type: "object",
+            properties: {
+                type: {
+                    type: "string",
+                    description:
+                        "Optional event type filter (e.g. 'Přednáška', 'Výstava', 'Workshop', 'Koncert', 'Čtení'). If omitted, returns all event types.",
+                },
+                maxResults: {
+                    type: "number",
+                    description:
+                        "Maximum number of events to return (default 10, max 30)",
                 },
             },
         },
@@ -450,6 +479,54 @@ async function handleGetOpeningHours(
     }
 }
 
+async function handleGetEvents(
+    args: z.infer<typeof GetEventsSchema>,
+): Promise<string> {
+    LoggerService.logAIFunctionCall("getEvents", args);
+
+    try {
+        let events = await scrapeEvents();
+
+        if (args.type) {
+            const query = args.type
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase();
+            events = events.filter((e) => {
+                if (!e.type) return false;
+                const t = e.type
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .toLowerCase();
+                return t.includes(query) || query.includes(t);
+            });
+        }
+
+        const maxResults = Math.min(args.maxResults ?? 10, 30);
+        events = events.slice(0, maxResults);
+
+        if (events.length === 0) {
+            return JSON.stringify({
+                status: "no_results",
+                message:
+                    "Nenašel jsem žádné nadcházející akce odpovídající vašemu dotazu.",
+            });
+        }
+
+        return JSON.stringify({
+            status: "ok",
+            count: events.length,
+            events,
+        });
+    } catch (error) {
+        LoggerService.logError(error as Error, "handleGetEvents");
+        return JSON.stringify({
+            status: "error",
+            message: "Nepodařilo se načíst akce z webu knihovny.",
+        });
+    }
+}
+
 // ─── Registry Factory ─────────────────────────────────────────────────────────
 
 /**
@@ -493,6 +570,12 @@ export function createToolRegistry(): ToolRegistry {
         getOpeningHoursSpec,
         GetOpeningHoursSchema,
         handleGetOpeningHours,
+    );
+    registry.register(
+        "getEvents",
+        getEventsSpec,
+        GetEventsSchema,
+        handleGetEvents,
     );
 
     return registry;

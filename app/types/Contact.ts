@@ -5,4 +5,5 @@ export type Contact = {
     department: string;
     phones: string[];
     email?: string;
+    url?: string;
 };
