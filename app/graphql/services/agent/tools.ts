@@ -10,6 +10,7 @@ import { vectorService } from "../book.service";
 import { searchSimilarContent } from "../site.service";
 import { queryCatalogService } from "../queryCatalog.service";
 import { contactService } from "../contact.service";
+import { scrapeOpeningHours } from "../scraper.service";
 import LoggerService from "../logger.service";
 import type { BookItem } from "../../../types";
 
@@ -45,6 +46,10 @@ const GetContactSchema = z
     .refine((d) => d.name || d.role || d.department, {
         message: "At least one search parameter is required",
     });
+
+const GetOpeningHoursSchema = z.object({
+    branch: z.string().optional(),
+});
 
 // ─── OpenAI Function Specs ────────────────────────────────────────────────────
 
@@ -176,6 +181,25 @@ const getContactSpec: ChatCompletionTool = {
                     type: "string",
                     description:
                         "Department name (e.g. 'IT', 'Ředitelství', 'Dětské oddělení')",
+                },
+            },
+        },
+    },
+};
+
+const getOpeningHoursSpec: ChatCompletionTool = {
+    type: "function",
+    function: {
+        name: "getOpeningHours",
+        description:
+            "Get current opening hours for library branches. Scrapes live data from the library website. Use this when the user asks about opening hours, when the library is open/closed, or business hours. Optionally filter by branch name.",
+        parameters: {
+            type: "object",
+            properties: {
+                branch: {
+                    type: "string",
+                    description:
+                        "Optional branch name to filter (e.g. 'Hlavní budova', 'Vesec', 'Ruprechtice', 'Machnín'). If omitted, returns all branches.",
                 },
             },
         },
@@ -362,7 +386,7 @@ async function handleGetContact(
 ): Promise<string> {
     LoggerService.logAIFunctionCall("getContact", args);
 
-    const matches = contactService.search({
+    const matches = await contactService.search({
         name: args.name,
         role: args.role,
         department: args.department,
@@ -381,6 +405,49 @@ async function handleGetContact(
         status: "ok",
         matches,
     });
+}
+
+async function handleGetOpeningHours(
+    args: z.infer<typeof GetOpeningHoursSchema>,
+): Promise<string> {
+    LoggerService.logAIFunctionCall("getOpeningHours", args);
+
+    try {
+        let branches = await scrapeOpeningHours();
+
+        if (args.branch) {
+            const query = args.branch
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase();
+            branches = branches.filter((b) => {
+                const name = b.branch
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .toLowerCase();
+                return name.includes(query) || query.includes(name);
+            });
+        }
+
+        if (branches.length === 0) {
+            return JSON.stringify({
+                status: "no_results",
+                message:
+                    "Nepodařilo se najít otevírací dobu pro zadanou pobočku.",
+            });
+        }
+
+        return JSON.stringify({
+            status: "ok",
+            branches,
+        });
+    } catch (error) {
+        LoggerService.logError(error as Error, "handleGetOpeningHours");
+        return JSON.stringify({
+            status: "error",
+            message: "Nepodařilo se načíst otevírací dobu z webu knihovny.",
+        });
+    }
 }
 
 // ─── Registry Factory ─────────────────────────────────────────────────────────
@@ -420,6 +487,12 @@ export function createToolRegistry(): ToolRegistry {
         getContactSpec,
         GetContactSchema,
         handleGetContact,
+    );
+    registry.register(
+        "getOpeningHours",
+        getOpeningHoursSpec,
+        GetOpeningHoursSchema,
+        handleGetOpeningHours,
     );
 
     return registry;
