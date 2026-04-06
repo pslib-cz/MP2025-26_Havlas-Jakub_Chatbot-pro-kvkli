@@ -1,10 +1,10 @@
 // ─── Agent Runtime Constants ──────────────────────────────────────────────────
 
 /** OpenAI model identifier */
-export const MODEL = "gpt-4o-mini";
+export const MODEL = "gpt-5.4-mini";
 
 /** Maximum tool call iterations before forcing a response */
-export const MAX_TOOL_ITERATIONS = 3;
+export const MAX_TOOL_ITERATIONS = 5;
 
 /** Fallback response when the model fails to produce an answer */
 export const FALLBACK_ANSWER =

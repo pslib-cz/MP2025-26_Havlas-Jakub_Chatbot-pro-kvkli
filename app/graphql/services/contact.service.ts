@@ -1,7 +1,9 @@
-// ─── Contact Service — Deterministic Contact Lookup ───────────────────────────
+// ─── Contact Service — Live-Scraped Contact Lookup ────────────────────────────
 
 import type { Contact } from "../../types/Contact";
 import { CONTACTS } from "./data/contacts";
+import { scrapeContacts } from "./scraper.service";
+import LoggerService from "./logger.service";
 
 interface ContactQuery {
     name?: string;
@@ -18,6 +20,9 @@ const EXACT_NAME_BONUS = 100;
 const PARTIAL_NAME_SCORE = 10;
 const ROLE_SCORE = 5;
 const DEPARTMENT_SCORE = 5;
+
+/** Cache TTL in milliseconds (10 minutes) */
+const CACHE_TTL = 10 * 60 * 1000;
 
 /**
  * Remove diacritics and lowercase a string for fuzzy comparison.
@@ -45,31 +50,44 @@ function tokenMatch(queryTokens: string[], target: string): boolean {
 }
 
 /**
- * Deterministic contact service that searches a static contacts data source.
- * No vector search or dynamic scraping — purely in-memory lookup.
+ * Contact service that scrapes live data from the KVKLI website with
+ * in-memory caching. Falls back to static contacts if scraping fails.
  */
 export class ContactService {
-    private readonly contacts: Contact[];
-    private readonly normalized: Array<{
-        name: string;
-        role: string;
-        department: string;
-    }>;
+    private cachedContacts: Contact[] | null = null;
+    private cacheTimestamp = 0;
 
-    constructor(contacts: Contact[] = CONTACTS) {
-        this.contacts = contacts;
-        this.normalized = contacts.map((c) => ({
-            name: normalize(c.name),
-            role: normalize(c.role ?? ""),
-            department: normalize(c.department),
-        }));
+    /**
+     * Get contacts — from cache, live scrape, or static fallback.
+     */
+    private async getContacts(): Promise<Contact[]> {
+        const now = Date.now();
+        if (this.cachedContacts && now - this.cacheTimestamp < CACHE_TTL) {
+            return this.cachedContacts;
+        }
+
+        try {
+            const contacts = await scrapeContacts();
+            if (contacts.length > 0) {
+                this.cachedContacts = contacts;
+                this.cacheTimestamp = now;
+                return contacts;
+            }
+        } catch (error) {
+            LoggerService.warn("Failed to scrape contacts, using fallback", {
+                error: (error as Error).message,
+            });
+        }
+
+        // Fallback to static data
+        return CONTACTS;
     }
 
     /**
      * Search contacts by name, role, and/or department.
      * Returns all matches sorted by relevance (exact name > partial name > role/department).
      */
-    search(query: ContactQuery): Contact[] {
+    async search(query: ContactQuery): Promise<Contact[]> {
         const qName = query.name ? normalize(query.name) : undefined;
         const qRole = query.role ? normalize(query.role) : undefined;
         const qDept = query.department
@@ -80,10 +98,17 @@ export class ContactService {
             return [];
         }
 
+        const contacts = await this.getContacts();
+        const normalized = contacts.map((c) => ({
+            name: normalize(c.name),
+            role: normalize(c.role ?? ""),
+            department: normalize(c.department),
+        }));
+
         const matches: ContactMatch[] = [];
 
-        for (let i = 0; i < this.contacts.length; i++) {
-            const norm = this.normalized[i];
+        for (let i = 0; i < contacts.length; i++) {
+            const norm = normalized[i];
             let score = 0;
 
             if (qName) {
@@ -99,7 +124,6 @@ export class ContactService {
 
             if (qRole) {
                 const roleTokens = tokenize(qRole);
-                // Bidirectional contains OR any query token found in role
                 if (
                     norm.role.includes(qRole) ||
                     qRole.includes(norm.role) ||
@@ -107,8 +131,6 @@ export class ContactService {
                 ) {
                     score += ROLE_SCORE;
                 }
-                // Also match role query tokens against department
-                // (e.g. "IT správce" → finds Oddělení IT)
                 if (tokenMatch(roleTokens, norm.department)) {
                     score += DEPARTMENT_SCORE;
                 }
@@ -126,7 +148,7 @@ export class ContactService {
             }
 
             if (score > 0) {
-                matches.push({ contact: this.contacts[i], score });
+                matches.push({ contact: contacts[i], score });
             }
         }
 
