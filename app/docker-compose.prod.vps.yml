@@ -15,7 +15,7 @@ services:
         environment:
             DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
             CHROMA_URL: http://chromadb:8000
-            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://144-91-77-107.sslip.io,https://widget.144-91-77-107.sslip.io,https://www.kvkli.cz,https://kvkli.cz,https://www.kvkli.cz/,https://chatbot.144-91-77-107.sslip.io}
+            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
         expose:
             - "3000"
         networks:

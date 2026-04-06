@@ -28,6 +28,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && r
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/widget.js ./public/widget.js
 
 EXPOSE 3001
 CMD ["node", "server.js"]

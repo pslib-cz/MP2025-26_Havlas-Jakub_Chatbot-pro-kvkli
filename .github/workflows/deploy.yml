@@ -40,19 +40,6 @@ jobs:
             - name: Checkout repository
               uses: actions/checkout@v4
 
-            - name: Setup Node.js for widget build
-              uses: actions/setup-node@v4
-              with:
-                  node-version: "20"
-                  cache: "npm"
-                  cache-dependency-path: app/package-lock.json
-
-            - name: Build widget artifact
-              working-directory: ./app
-              run: |
-                  npm ci
-                  npm run build:widget
-
             - name: Log in to GitHub Container Registry
               uses: docker/login-action@v3
               with:
@@ -82,10 +69,9 @@ jobs:
               run: |
                   scp app/docker-compose.prod.vps.yml ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/docker-compose.prod.vps.yml
 
-            - name: Publish widget static files to VPS
+            - name: Publish widget test page to VPS
               run: |
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/widget"
-                  scp app/widget.js ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/widget.js
                   scp app/widget/widget-test.html ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/index.html
 
             - name: Deploy with Docker Compose (pull image)
