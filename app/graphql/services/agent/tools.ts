@@ -43,7 +43,7 @@ const GetContactSchema = z
         role: z.string().optional(),
         department: z.string().optional(),
     })
-    .refine((d) => d.name || d.role || d.department, {
+    .refine((d: { name?: string; role?: string; department?: string }) => d.name || d.role || d.department, {
         message: "At least one search parameter is required",
     });
 
