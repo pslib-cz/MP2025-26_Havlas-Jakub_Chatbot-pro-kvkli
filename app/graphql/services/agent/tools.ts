@@ -316,6 +316,59 @@ async function handleSearchCatalog(
     });
 }
 
+/**
+ * Short queries (≤ TITLE_ENRICHMENT_THRESHOLD words) that look like bare book
+ * titles are automatically enriched via a catalog lookup so that the vector
+ * search receives the book's *description & subjects* instead of just the title
+ * (which would match on literal words like "větrné" → meteorology books).
+ */
+const TITLE_ENRICHMENT_THRESHOLD = 8;
+
+async function tryEnrichTitleQuery(
+    query: string,
+): Promise<{ enrichedQuery: string; sourceTitle: string | null }> {
+    const wordCount = query.trim().split(/\s+/).length;
+    if (wordCount > TITLE_ENRICHMENT_THRESHOLD) {
+        return { enrichedQuery: query, sourceTitle: null };
+    }
+
+    try {
+        const catalogResults = await queryCatalogService.searchByTitle(query, 3);
+
+        // Find a result whose title closely matches the query
+        const queryLower = query.toLowerCase();
+        const match = catalogResults.find((b) => {
+            const titleLower = b.title.toLowerCase();
+            return (
+                titleLower.includes(queryLower) ||
+                queryLower.includes(titleLower)
+            );
+        });
+
+        if (match && (match.description || match.subjects)) {
+            const parts: string[] = [];
+            if (match.description) parts.push(match.description);
+            if (match.subjects) parts.push(`Témata: ${match.subjects}`);
+            const enriched = parts.join(". ");
+
+            LoggerService.info("recommendBooks: enriched title query from catalog", {
+                originalQuery: query,
+                matchedTitle: match.title,
+                enrichedQueryPreview: enriched.substring(0, 200),
+            });
+
+            return { enrichedQuery: enriched, sourceTitle: match.title };
+        }
+    } catch (err) {
+        LoggerService.warn("recommendBooks: catalog enrichment failed, using original query", {
+            query,
+            error: (err as Error).message,
+        });
+    }
+
+    return { enrichedQuery: query, sourceTitle: null };
+}
+
 async function handleRecommendBooks(
     args: z.infer<typeof RecommendBooksSchema>,
 ): Promise<string> {
@@ -324,16 +377,34 @@ async function handleRecommendBooks(
 
     LoggerService.logAIFunctionCall("recommendBooks", { query, limit });
 
-    const books = (await vectorService.searchBooks(query, limit)) as BookItem[];
+    // Safeguard: if the AI passed a bare book title instead of a thematic
+    // description, look up the book first and use its description/subjects.
+    const { enrichedQuery, sourceTitle } = await tryEnrichTitleQuery(query);
 
-    if (books.length === 0) {
+    const books = (await vectorService.searchBooks(
+        enrichedQuery,
+        // Fetch one extra so we can drop the source book if present
+        sourceTitle ? limit + 1 : limit,
+    )) as BookItem[];
+
+    // Remove the source book itself from recommendations
+    let filtered = books;
+    if (sourceTitle) {
+        const srcLower = sourceTitle.toLowerCase();
+        filtered = books.filter(
+            (b) => !b.title.toLowerCase().includes(srcLower),
+        );
+    }
+    filtered = filtered.slice(0, limit);
+
+    if (filtered.length === 0) {
         return JSON.stringify({
             status: "no_results",
             message: "Nenašel jsem žádné knihy odpovídající vašemu dotazu.",
         });
     }
 
-    const booksWithUrls = ensureBookUrls(books);
+    const booksWithUrls = ensureBookUrls(filtered);
 
     return JSON.stringify({
         status: "ok",
