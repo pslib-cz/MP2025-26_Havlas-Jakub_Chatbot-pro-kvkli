@@ -50,6 +50,17 @@ export class AgentRuntime {
         const toolSpecs = this.registry.getSpecs();
         let iterations = 0;
 
+        // Log the last user message so we can trace how the agent handles it
+        const messages = history.getMessages();
+        const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+        LoggerService.info("AgentRuntime: starting run", {
+            userMessage:
+                typeof lastUserMsg?.content === "string"
+                    ? lastUserMsg.content
+                    : JSON.stringify(lastUserMsg?.content),
+            totalMessages: messages.length,
+        });
+
         while (iterations < this.maxIterations) {
             const response = await chatCompletion({
                 model: this.model,
@@ -65,6 +76,11 @@ export class AgentRuntime {
             if (!toolCalls || toolCalls.length === 0) {
                 const answer = message.content ?? this.fallback;
                 history.addAssistant(answer);
+
+                LoggerService.info("AgentRuntime: final answer produced", {
+                    iterations,
+                    answerPreview: answer.substring(0, 200),
+                });
 
                 return {
                     answer,
@@ -102,6 +118,7 @@ export class AgentRuntime {
                     tool: name,
                     iteration: iterations,
                     toolCallId: toolCall.id,
+                    arguments: rawArgs,
                 });
 
                 const result = await this.registry.execute(

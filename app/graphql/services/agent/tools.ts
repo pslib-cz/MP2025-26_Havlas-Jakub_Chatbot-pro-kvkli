@@ -94,14 +94,14 @@ const recommendBooksSpec: ChatCompletionTool = {
     function: {
         name: "recommendBooks",
         description:
-            "Recommend books based on themes, genre, literary period, author era, reader age, or similar books. Also use this as a FALLBACK when searching for books by a specific author if catalog search returns no results.",
+            "Recommend books based on themes, genre, literary period, author era, reader age, or similar books. Also use this as a FALLBACK when searching for books by a specific author if catalog search returns no results. IMPORTANT: When the user wants books similar to a specific title, you MUST first call searchCatalog(searchType='title') to get that book's description and subjects, then use THAT content as the query here — never pass just the book title as the query.",
         parameters: {
             type: "object",
             properties: {
                 query: {
                     type: "string",
                     description:
-                        "User request for book recommendations (themes, era, authors, genre, etc.)",
+                        "Thematic query for the vector search: use description, subjects, and genre of the reference book — NOT the book title itself. For similarity requests, extract this from a prior searchCatalog call.",
                 },
                 count: {
                     type: "number",
