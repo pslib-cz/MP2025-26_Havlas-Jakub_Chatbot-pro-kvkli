@@ -39,9 +39,9 @@ DŮLEŽITÉ PRAVIDLO PRO FORMATOVÁNÍ KNIH:
 - Pokud jde o různé autory, každá kniha je zobrazena s autorem ve formátu: [Název](URL) — Autor
 
 DŮLEŽITÉ PRAVIDLO PRO POČET KNIH:
-- Pokud uživatel řekne "všechny", "vše", "all", "every", nebo podobný výraz znamenající všechno, použij count=40.
-- Pokud uživatel řekne konkrétní číslo (např. "dej mi 10"), použij přesně to číslo.
-- Pokud uživatel nespecifikuje, použij výchozí hodnotu 5.
+- Pokud uživatel řekne "všechny", "vše", "all", "every", nebo podobný výraz znamenající všechno, nastav fetchAll=true (NEPOUŽÍVEJ count).
+- Pokud uživatel řekne konkrétní číslo (např. "dej mi 10"), použij přesně to číslo jako count.
+- Pokud uživatel nespecifikuje, použij výchozí hodnotu count=5.
 
 DŮLEŽITÉ PRAVIDLO PRO FUNKCE:
 - Můžeš zavolat více funkcí nachází-li se relevantní. Volej všechny relevantní funkce v jedné odpovědi.

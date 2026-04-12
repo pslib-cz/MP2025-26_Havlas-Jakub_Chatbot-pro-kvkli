@@ -7,96 +7,21 @@ This document is based on code inspection of the current app backend. I did not 
 - The answer path is serial: one OpenAI call, then one or more tool calls, then another OpenAI call.
 - Some tools do live network work directly on the request path: catalog scraping, opening hours scraping, events scraping, and embedding generation.
 - The scraper timeout is 10 seconds, so one slow upstream response can dominate the entire request.
-- The app already caches contacts for 10 minutes, but opening hours and events do not use the same pattern.
-- There is a catalog over-fetch bug: in `handleSearchCatalog`, any `count >= 20` is treated as `fetch all pages`, not `return 20 results`.
+- ~~The app already caches contacts for 10 minutes, but opening hours and events do not use the same pattern.~~ **FIXED** — TTL cache with in-flight deduplication added for opening hours and events.
+- ~~There is a catalog over-fetch bug: in `handleSearchCatalog`, any `count >= 20` is treated as `fetch all pages`, not `return 20 results`.~~ **FIXED** — explicit `fetchAll` boolean added.
 - The prompt forces extra multi-step tool usage in at least one case where the backend already knows how to enrich the query itself.
 
 ## Suggested Order
 
 If the goal is to move average latency down quickly, I would start in this order:
 
-1. Fix catalog over-fetch semantics.
-2. Cache live data and stop scraping it on every matching request.
+1. ~~Fix catalog over-fetch semantics.~~ **DONE**
+2. ~~Cache live data and stop scraping it on every matching request.~~ **DONE**
 3. Remove avoidable OpenAI round trips for similar-book flows.
 4. Parallelize independent tool calls and add speculative prefetch.
 5. Cache embeddings and make vector lookups cheaper.
 
-## 1. Fix The Catalog Over-Fetch Bug First
-
-### How it would work
-
-Right now `handleSearchCatalog` treats any `count >= MAX_COUNT` as `fetch all`. That means a request for 20 books can trigger full catalog pagination instead of stopping at 20. This is likely one of the highest-cost bugs in the current code.
-
-### What should be changed
-
-- Change the `searchCatalog` flow so only an explicit `fetchAll` signal means "fetch all pages".
-- Do not infer `fetchAll` from `count >= 20`.
-- Align the following files so they all mean the same thing:
-  - `app/graphql/services/agent/tools.ts`
-  - `app/graphql/services/agent/preprocessing.ts`
-  - `app/graphql/services/agent/constants.ts`
-  - `app/graphql/utils/ai.prompt.ts`
-- Prefer one of these designs:
-  - Keep `count` numeric and add `fetchAll?: boolean`.
-  - Or reserve a special sentinel only when the backend itself sets it, never when the model passes a user-facing count.
-
-### Documentation
-
-- Document the exact meaning of `count` versus `fetchAll` in the tool contract.
-- Remove the current mismatch where the prompt says "all = 40" but runtime clamps to 20 and `searchCatalog` treats 20 as fetch-all.
-
-### Risks
-
-- Very low risk technically.
-- The main behavioral change is that "20 books" will finally mean 20 books instead of "as many pages as the catalog has".
-
-### Estimated help
-
-- High on affected catalog queries.
-- Roughly 2 to 8 seconds faster when the current bug is triggered.
-- Low to medium average gain overall, depending on how often users ask for large result sets.
-
-## 2. Cache Live Data Instead Of Scraping Every Time
-
-This is the strongest version of your "cache the data instead of getting everytime" idea.
-
-### How it would work
-
-For opening hours and events, the backend should stop scraping the external website during every user request. Instead:
-
-- Short term: add in-memory TTL cache with in-flight request deduplication.
-- Better: refresh data in the background every few minutes and serve requests from local memory, Prisma, or Redis.
-- Best: use stale-while-revalidate so users get a fast answer immediately and the refresh happens after the response.
-
-The code already does this for contacts in `contact.service.ts`, so there is a working pattern to copy.
-
-### What should be changed
-
-- Add cache wrappers around:
-  - `scrapeOpeningHours()`
-  - `scrapeEvents()`
-- Keep the existing contact cache and make the cache strategy consistent.
-- Add in-flight deduplication so 20 concurrent requests for opening hours only produce one outbound scrape.
-- If you want a stronger solution, add a scheduled refresher that stores the parsed result in local storage or the database.
-
-### Documentation
-
-- Document TTLs for each data source.
-- Document when stale data is acceptable.
-- Add a short admin/debug note for how to force refresh cached live data.
-
-### Risks
-
-- Cached data can become stale.
-- In-memory cache only helps inside one process; multi-instance deployments need Redis or database-backed cache.
-
-### Estimated help
-
-- Very high on opening-hours and events queries.
-- Roughly 1 to 6 seconds faster on those queries.
-- Near-zero impact on catalog-only queries.
-
-## 3. Remove An Extra OpenAI Round Trip For Similar-Book Requests
+## 1. Remove An Extra OpenAI Round Trip For Similar-Book Requests
 
 ### How it would work
 
@@ -129,7 +54,7 @@ But `handleRecommendBooks` already contains `tryEnrichTitleQuery`, which means t
 - High for "recommend something like this book" questions.
 - Roughly 1 to 3 seconds faster on those queries.
 
-## 4. Parallelize Independent Tool Calls In The Agent Runtime
+## 2. Parallelize Independent Tool Calls In The Agent Runtime
 
 This is the safe part of your "make all function calls asynchronous" idea.
 
@@ -166,7 +91,7 @@ Instead:
 - Roughly 0 to 3 seconds faster, depending on query shape.
 - No benefit for single-tool queries.
 
-## 5. Add Speculative Prefetch While The First Model Call Is Running
+## 3. Add Speculative Prefetch While The First Model Call Is Running
 
 This is the more ambitious version of "let AI think while data is being scraped".
 
@@ -202,7 +127,7 @@ This does not break the agent loop, but it shortens idle waiting between reasoni
 - Medium on matching queries.
 - Roughly 0.5 to 2 seconds faster when the heuristic is correct.
 
-## 6. Cache Embeddings And Reuse Hot Vector Resources
+## 4. Cache Embeddings And Reuse Hot Vector Resources
 
 ### How it would work
 
@@ -237,7 +162,7 @@ For popular or repeated queries, cache the normalized query embedding. Also keep
 - Medium for vector-based queries.
 - Roughly 0.4 to 1.5 seconds faster on `searchWebsite`, `recommendBooks`, and `findBookByPlot`.
 
-## 7. Make Catalog Responses Cheaper By Default
+## 5. Make Catalog Responses Cheaper By Default
 
 ### How it would work
 
@@ -272,7 +197,7 @@ The cheap path should be:
 - High for catalog searches.
 - Roughly 1 to 4 seconds faster on many book lookup requests.
 
-## 8. Shrink Prompt And History Payload
+## 6. Shrink Prompt And History Payload
 
 ### How it would work
 
@@ -306,7 +231,7 @@ The faster pattern is:
 - Medium average improvement.
 - Roughly 0.2 to 1.5 seconds faster on average, more on longer conversations.
 
-## 9. Stream Progress And First Tokens Instead Of Blocking The Mutation
+## 7. Stream Progress And First Tokens Instead Of Blocking The Mutation
 
 ### How it would work
 
@@ -339,7 +264,7 @@ The current GraphQL mutation blocks until `aiService.generateAnswer()` fully com
 - Backend speed: 0 seconds.
 - Perceived latency: 2 to 6 seconds better for users.
 
-## 10. Add Proper Latency Instrumentation Before And After The Fixes
+## 8. Add Proper Latency Instrumentation Before And After The Fixes
 
 ### How it would work
 

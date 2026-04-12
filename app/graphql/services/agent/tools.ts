@@ -10,7 +10,7 @@ import { vectorService } from "../book.service";
 import { searchSimilarContent } from "../site.service";
 import { queryCatalogService } from "../queryCatalog.service";
 import { contactService } from "../contact.service";
-import { scrapeOpeningHours, scrapeEvents } from "../scraper.service";
+import { scrapeOpeningHours, scrapeEvents, getCachedOpeningHours, getCachedEvents } from "../scraper.service";
 import LoggerService from "../logger.service";
 import type { BookItem } from "../../../types";
 
@@ -20,6 +20,7 @@ const SearchCatalogSchema = z.object({
     searchType: z.enum(["title", "author", "general"]),
     query: z.string().min(1),
     count: z.number().optional(),
+    fetchAll: z.boolean().optional(),
 });
 
 const RecommendBooksSchema = z.object({
@@ -81,7 +82,12 @@ const searchCatalogSpec: ChatCompletionTool = {
                 count: {
                     type: "number",
                     description:
-                        "How many books to return. Use exactly what the user requested (e.g. 3 if they said 'give me 3 books'). If the user says 'all', 'všechny', or any similar word meaning all/every, use 20. Defaults to 5 if not specified. Maximum 20.",
+                        "How many books to return. Use exactly what the user requested (e.g. 3 if they said 'give me 3 books'). Defaults to 5 if not specified. Maximum 20.",
+                },
+                fetchAll: {
+                    type: "boolean",
+                    description:
+                        "Set to true ONLY when the user explicitly says 'all', 'všechny', 'vše', or similar words meaning every/all. Do NOT set this when the user asks for a specific number. When true, count is ignored.",
                 },
             },
             required: ["searchType", "query"],
@@ -241,7 +247,7 @@ async function handleSearchCatalog(
     args: z.infer<typeof SearchCatalogSchema>,
 ): Promise<string> {
     const query = sanitizeInput(args.query);
-    const wantsAll = args.count != null && args.count >= MAX_COUNT;
+    const wantsAll = args.fetchAll === true;
     const limit = wantsAll
         ? FETCH_ALL_COUNT
         : normalizeCount(args.count, DEFAULT_COUNT);
@@ -513,7 +519,7 @@ async function handleGetOpeningHours(
     LoggerService.logAIFunctionCall("getOpeningHours", args);
 
     try {
-        let branches = await scrapeOpeningHours();
+        let branches = await getCachedOpeningHours();
 
         if (args.branch) {
             const query = args.branch
@@ -556,7 +562,7 @@ async function handleGetEvents(
     LoggerService.logAIFunctionCall("getEvents", args);
 
     try {
-        let events = await scrapeEvents();
+        let events = await getCachedEvents();
 
         if (args.type) {
             const query = args.type

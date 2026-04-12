@@ -50,8 +50,8 @@ export function normalizeForComparison(value: string): string {
 }
 
 /**
- * Normalize count values: converts "all"/"všechny" semantics to MAX_COUNT.
- * Clamps between 1 and MAX_COUNT.
+ * Normalize count values: clamps between 1 and MAX_COUNT.
+ * Values above MAX_COUNT are clamped to MAX_COUNT (not treated as fetch-all).
  */
 export function normalizeCount(
     count: number | undefined,
@@ -59,9 +59,6 @@ export function normalizeCount(
 ): number {
     if (count === undefined || count === null) {
         return defaultCount;
-    }
-    if (count >= MAX_COUNT) {
-        return MAX_COUNT;
     }
     return Math.max(1, Math.min(count, MAX_COUNT));
 }
