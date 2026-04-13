@@ -4,7 +4,7 @@ import { z } from "zod";
 import type { ChatCompletionTool } from "openai/resources/chat";
 import { ToolRegistry } from "./ToolRegistry";
 import { DEFAULT_COUNT, MAX_COUNT, FETCH_ALL_COUNT } from "./constants";
-import { sanitizeInput, normalizeCount, toAsciiOnly } from "./preprocessing";
+import { sanitizeInput, normalizeCount, toAsciiOnly, normalizeUnicode } from "./preprocessing";
 import { formatBooks, filterByAuthor, ensureBookUrls } from "./formatting";
 import { vectorService } from "../book.service";
 import { searchSimilarContent } from "../site.service";
@@ -327,8 +327,33 @@ async function handleSearchCatalog(
  * titles are automatically enriched via a catalog lookup so that the vector
  * search receives the book's *description & subjects* instead of just the title
  * (which would match on literal words like "větrné" → meteorology books).
+ *
+ * Enrichment pipeline:
+ * 1. Try IPAC catalog search with fuzzy title matching
+ * 2. If catalog fails → fall back to ChromaDB vector search for the title
+ * 3. If both fail → use the original query as-is
  */
 const TITLE_ENRICHMENT_THRESHOLD = 8;
+
+/**
+ * Normalize a title for fuzzy comparison: strip diacritics, lowercase,
+ * remove trailing punctuation like " /" that the catalog often appends.
+ */
+function normalizeTitleForMatch(title: string): string {
+    return normalizeUnicode(title)
+        .toLowerCase()
+        .replace(/\s*\/\s*$/, "")   // trailing " /"
+        .replace(/[^\w\s]/g, "")     // non-word chars
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function extractEnrichment(book: { description?: string; subjects?: string }): string | null {
+    const parts: string[] = [];
+    if (book.description) parts.push(book.description);
+    if (book.subjects) parts.push(`Témata: ${book.subjects}`);
+    return parts.length > 0 ? parts.join(". ") : null;
+}
 
 async function tryEnrichTitleQuery(
     query: string,
@@ -338,35 +363,69 @@ async function tryEnrichTitleQuery(
         return { enrichedQuery: query, sourceTitle: null };
     }
 
-    try {
-        const catalogResults = await queryCatalogService.searchByTitle(query, 3);
+    const queryNorm = normalizeTitleForMatch(query);
 
-        // Find a result whose title closely matches the query
-        const queryLower = query.toLowerCase();
+    // ── Step 1: Try catalog search with fuzzy matching ────────────────
+    try {
+        const catalogResults = await queryCatalogService.searchByTitle(query, 5);
+
         const match = catalogResults.find((b) => {
-            const titleLower = b.title.toLowerCase();
+            const titleNorm = normalizeTitleForMatch(b.title);
             return (
-                titleLower.includes(queryLower) ||
-                queryLower.includes(titleLower)
+                titleNorm.includes(queryNorm) ||
+                queryNorm.includes(titleNorm)
             );
         });
 
-        if (match && (match.description || match.subjects)) {
-            const parts: string[] = [];
-            if (match.description) parts.push(match.description);
-            if (match.subjects) parts.push(`Témata: ${match.subjects}`);
-            const enriched = parts.join(". ");
-
-            LoggerService.info("recommendBooks: enriched title query from catalog", {
-                originalQuery: query,
-                matchedTitle: match.title,
-                enrichedQueryPreview: enriched.substring(0, 200),
-            });
-
-            return { enrichedQuery: enriched, sourceTitle: match.title };
+        if (match) {
+            const enriched = extractEnrichment(match);
+            if (enriched) {
+                LoggerService.info("recommendBooks: enriched title query from catalog", {
+                    originalQuery: query,
+                    matchedTitle: match.title,
+                    enrichedQueryPreview: enriched.substring(0, 200),
+                });
+                return { enrichedQuery: enriched, sourceTitle: match.title };
+            }
         }
     } catch (err) {
-        LoggerService.warn("recommendBooks: catalog enrichment failed, using original query", {
+        LoggerService.warn("recommendBooks: catalog enrichment failed, trying ChromaDB fallback", {
+            query,
+            error: (err as Error).message,
+        });
+    }
+
+    // ── Step 2: ChromaDB vector fallback ──────────────────────────────
+    try {
+        const vectorResults = (await vectorService.searchBooks(query, 3)) as BookItem[];
+
+        const match = vectorResults.find((b) => {
+            const titleNorm = normalizeTitleForMatch(b.title);
+            return (
+                titleNorm.includes(queryNorm) ||
+                queryNorm.includes(titleNorm)
+            );
+        });
+
+        if (match) {
+            const enriched = extractEnrichment(match);
+            if (enriched) {
+                LoggerService.info("recommendBooks: enriched title query from ChromaDB fallback", {
+                    originalQuery: query,
+                    matchedTitle: match.title,
+                    enrichedQueryPreview: enriched.substring(0, 200),
+                });
+                return { enrichedQuery: enriched, sourceTitle: match.title };
+            }
+        }
+
+        LoggerService.warn("recommendBooks: no matching title found in catalog or ChromaDB", {
+            query,
+            catalogAttempted: true,
+            chromaAttempted: true,
+        });
+    } catch (err) {
+        LoggerService.warn("recommendBooks: ChromaDB fallback also failed, using original query", {
             query,
             error: (err as Error).message,
         });
