@@ -329,11 +329,49 @@ async function handleSearchCatalog(
  * (which would match on literal words like "větrné" → meteorology books).
  *
  * Enrichment pipeline:
- * 1. Try IPAC catalog search with fuzzy title matching
- * 2. If catalog fails → fall back to ChromaDB vector search for the title
- * 3. If both fail → use the original query as-is
+ * 1. Strip common recommendation phrases to extract the bare book title
+ * 2. Try IPAC catalog search with fuzzy title matching
+ * 3. If catalog fails → fall back to ChromaDB vector search for the title
+ * 4. If both fail → use the original query as-is
  */
-const TITLE_ENRICHMENT_THRESHOLD = 8;
+const TITLE_ENRICHMENT_THRESHOLD = 12;
+
+/**
+ * Common Czech phrases the AI wraps around a book title when calling
+ * recommendBooks. These are stripped to extract the bare title for lookup.
+ */
+const RECOMMENDATION_PREFIXES = [
+    /^podobn[éá]\s+knih[yaou]\s+jako\s+/i,
+    /^knih[yaou]\s+podobn[éá]\s+/i,
+    /^doporuč(?:it|ení)?\s+(?:mi\s+)?(?:knih[yaou]\s+)?(?:podobn[éá]\s+)?(?:jako\s+)?/i,
+    /^něco\s+podobného\s+jako\s+/i,
+    /^hledám\s+(?:knih[yaou]\s+)?podobn[éá]\s+(?:jako\s+)?/i,
+    /^chci\s+(?:knih[yaou]\s+)?podobn[éá]\s+(?:jako\s+)?/i,
+];
+
+const RECOMMENDATION_SUFFIXES = [
+    /\s+(?:podobn[éá]\s+)?knih[yaou]$/i,
+    /\s+doporuč(?:ení|it)?$/i,
+];
+
+/**
+ * Strip recommendation phrasing from around a book title.
+ * E.g. "podobné knihy jako Na větrné hůrce" → "Na větrné hůrce"
+ */
+function extractTitleFromQuery(query: string): string {
+    let stripped = query.trim();
+    for (const prefix of RECOMMENDATION_PREFIXES) {
+        stripped = stripped.replace(prefix, "");
+    }
+    for (const suffix of RECOMMENDATION_SUFFIXES) {
+        stripped = stripped.replace(suffix, "");
+    }
+    stripped = stripped.trim();
+    // Only use the stripped version if it's shorter and non-empty
+    return stripped.length > 0 && stripped.length < query.trim().length
+        ? stripped
+        : query.trim();
+}
 
 /**
  * Normalize a title for fuzzy comparison: strip diacritics, lowercase,
@@ -363,11 +401,21 @@ async function tryEnrichTitleQuery(
         return { enrichedQuery: query, sourceTitle: null };
     }
 
-    const queryNorm = normalizeTitleForMatch(query);
+    // Strip recommendation phrasing to get the bare title
+    const bareTitle = extractTitleFromQuery(query);
+    const searchQuery = bareTitle;
+    const queryNorm = normalizeTitleForMatch(bareTitle);
+
+    if (bareTitle !== query.trim()) {
+        LoggerService.info("recommendBooks: stripped recommendation phrasing from query", {
+            originalQuery: query,
+            extractedTitle: bareTitle,
+        });
+    }
 
     // ── Step 1: Try catalog search with fuzzy matching ────────────────
     try {
-        const catalogResults = await queryCatalogService.searchByTitle(query, 5);
+        const catalogResults = await queryCatalogService.searchByTitle(searchQuery, 5);
 
         const match = catalogResults.find((b) => {
             const titleNorm = normalizeTitleForMatch(b.title);
@@ -397,7 +445,7 @@ async function tryEnrichTitleQuery(
 
     // ── Step 2: ChromaDB vector fallback ──────────────────────────────
     try {
-        const vectorResults = (await vectorService.searchBooks(query, 3)) as BookItem[];
+        const vectorResults = (await vectorService.searchBooks(searchQuery, 3)) as BookItem[];
 
         const match = vectorResults.find((b) => {
             const titleNorm = normalizeTitleForMatch(b.title);
