@@ -1,46 +1,8 @@
 import pino from "pino";
-import path from "path";
-import fs from "fs";
-import { Writable } from "stream";
 
-const logDir = path.join(process.cwd(), "logs");
-
-// Ensure log directory exists
-if (!fs.existsSync(logDir)) {
-    fs.mkdirSync(logDir, { recursive: true });
-}
-
-const getLogFileName = (date: string) => {
-    return path.join(logDir, `app-${date}.log`);
-};
-
-const getCurrentDate = () => new Date().toISOString().split("T")[0];
-
-// Rotating write stream — reopens the file when the date changes
-let currentDate = getCurrentDate();
-let fileStream = fs.createWriteStream(getLogFileName(currentDate), { flags: "a" });
-
-const rotatingStream = new Writable({
-    write(chunk: Buffer, _encoding: string, callback: () => void) {
-        const today = getCurrentDate();
-        if (today !== currentDate) {
-            fileStream.end();
-            currentDate = today;
-            fileStream = fs.createWriteStream(getLogFileName(currentDate), { flags: "a" });
-        }
-        fileStream.write(chunk, callback);
-    },
+const logger = pino({
+    level: process.env.LOG_LEVEL || "info",
 });
-
-const logger = pino(
-    {
-        level: process.env.LOG_LEVEL || "info",
-    },
-    pino.multistream([
-        { stream: rotatingStream },
-        { stream: process.stdout }, // Console output
-    ]),
-);
 
 export class LoggerService {
     static logAIFunctionCall(

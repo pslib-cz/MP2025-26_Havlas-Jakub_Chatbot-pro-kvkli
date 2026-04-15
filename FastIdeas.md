@@ -17,8 +17,8 @@ If the goal is to move average latency down quickly, I would start in this order
 
 1. ~~Fix catalog over-fetch semantics.~~ **DONE**
 2. ~~Cache live data and stop scraping it on every matching request.~~ **DONE**
-3. Remove avoidable OpenAI round trips for similar-book flows.
-4. Parallelize independent tool calls and add speculative prefetch.
+3. ~~Remove avoidable OpenAI round trips for similar-book flows.~~ **DONE**
+4. ~~Parallelize independent tool calls and add speculative prefetch.~~ **DONE** (parallelization; speculative prefetch deferred)
 5. Cache embeddings and make vector lookups cheaper.
 
 ## 1. Remove An Extra OpenAI Round Trip For Similar-Book Requests

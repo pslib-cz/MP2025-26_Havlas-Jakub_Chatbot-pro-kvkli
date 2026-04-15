@@ -110,9 +110,11 @@ export class AgentRuntime {
                 })),
             );
 
-            // Execute each tool call and inject the result
-            for (const toolCall of functionToolCalls) {
+            // Execute tool calls in parallel, deduplicating identical calls
+            const dedupeMap = new Map<string, Promise<string>>();
+            const toolPromises = functionToolCalls.map((toolCall) => {
                 const { name, arguments: rawArgs } = toolCall.function;
+                const dedupeKey = `${name}:${rawArgs}`;
 
                 LoggerService.info("AgentRuntime: executing tool", {
                     tool: name,
@@ -121,17 +123,50 @@ export class AgentRuntime {
                     arguments: rawArgs,
                 });
 
-                const result = await this.registry.execute(
-                    name,
-                    rawArgs,
-                    this.fallback,
-                );
+                let execution = dedupeMap.get(dedupeKey);
+                if (!execution) {
+                    execution = this.registry.execute(
+                        name,
+                        rawArgs,
+                        this.fallback,
+                    );
+                    dedupeMap.set(dedupeKey, execution);
+                } else {
+                    LoggerService.debug("AgentRuntime: reusing deduplicated tool call", {
+                        tool: name,
+                        toolCallId: toolCall.id,
+                    });
+                }
 
-                LoggerService.debug("AgentRuntime: tool result received", {
-                    tool: name,
-                    resultLength: result.length,
-                    resultPreview: result.substring(0, 100),
-                });
+                return { toolCall, name, resultPromise: execution };
+            });
+
+            const settled = await Promise.allSettled(
+                toolPromises.map((tp) => tp.resultPromise),
+            );
+
+            // Inject results in original order
+            for (let i = 0; i < toolPromises.length; i++) {
+                const { toolCall, name } = toolPromises[i];
+                const outcome = settled[i];
+                const result =
+                    outcome.status === "fulfilled"
+                        ? outcome.value
+                        : this.fallback;
+
+                if (outcome.status === "rejected") {
+                    LoggerService.warn("AgentRuntime: tool call failed", {
+                        tool: name,
+                        toolCallId: toolCall.id,
+                        error: String(outcome.reason),
+                    });
+                } else {
+                    LoggerService.debug("AgentRuntime: tool result received", {
+                        tool: name,
+                        resultLength: result.length,
+                        resultPreview: result.substring(0, 100),
+                    });
+                }
 
                 history.addToolResult(toolCall.id, result);
 
