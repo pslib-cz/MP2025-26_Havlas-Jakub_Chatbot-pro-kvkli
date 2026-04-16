@@ -1,7 +1,7 @@
 services:
     app:
         container_name: myapp
-        build: .
+        image: ghcr.io/pslib-cz/kvkli-app:latest
         restart: always
         env_file:
             - .env
