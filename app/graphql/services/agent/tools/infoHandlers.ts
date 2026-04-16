@@ -20,6 +20,32 @@ import {
 
 // ─── Search Website (semantic search — last resort) ───────────────────────────
 
+// ─── Czech date parsing for event classification ──────────────────────────────
+
+const CZECH_MONTHS: Record<string, number> = {
+    ledna: 0, února: 1, března: 2, dubna: 3, května: 4, června: 5,
+    července: 6, srpna: 7, září: 8, října: 9, listopadu: 10, prosince: 11,
+};
+
+function parseCzechDate(dateStr: string): Date | null {
+    const match = dateStr.match(/(\d{1,2})\.\s*(\w+)\s+(\d{4})/);
+    if (!match) return null;
+    const day = parseInt(match[1], 10);
+    const monthName = match[2].toLowerCase();
+    const year = parseInt(match[3], 10);
+    const month = CZECH_MONTHS[monthName];
+    if (month === undefined) return null;
+    return new Date(year, month, day);
+}
+
+// ─── Keyword lists for searchWebsite guards ───────────────────────────────────
+
+const EVENT_KEYWORDS = [
+    "kurz", "kurzy", "workshop", "workshopy", "skoleni",
+    "akce", "udalost", "udalosti", "prednaska", "prednasky",
+    "koncert", "vystava", "vystavy", "cteni",
+];
+
 const OPENING_HOURS_KEYWORDS = [
     "oteviraci doba",
     "oteviraci",
@@ -77,6 +103,16 @@ export async function handleSearchWebsite(
         return handleGetOpeningHours({
             branch: mentionedBranch ?? undefined,
         });
+    }
+
+    // Guard: redirect event/course queries to live getEvents
+    const isEventQuery = EVENT_KEYWORDS.some((kw) => queryNorm.includes(kw));
+    if (isEventQuery) {
+        LoggerService.warn(
+            "searchWebsite: redirecting to getEvents (query matched event/course pattern)",
+            { query },
+        );
+        return handleGetEvents({ maxResults: maxResults });
     }
 
     let similarContent: Awaited<ReturnType<typeof searchSimilarContent>> = [];
@@ -207,22 +243,58 @@ export async function handleGetEvents(
             });
         }
 
-        const maxResults = Math.min(args.maxResults ?? 10, 30);
-        events = events.slice(0, maxResults);
+        // ── Classify events as upcoming vs past ──────────────────────
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-        if (events.length === 0) {
+        const classified = events.map((e) => {
+            const parsed = parseCzechDate(e.date);
+            const isPast = parsed ? parsed < today : false;
+            return { event: e, isPast, parsedDate: parsed };
+        });
+
+        // Sort: upcoming first (soonest first), then past (most recent first)
+        classified.sort((a, b) => {
+            if (a.isPast !== b.isPast) return a.isPast ? 1 : -1;
+            if (!a.parsedDate || !b.parsedDate) return 0;
+            if (a.isPast)
+                return b.parsedDate.getTime() - a.parsedDate.getTime();
+            return a.parsedDate.getTime() - b.parsedDate.getTime();
+        });
+
+        const maxResults = Math.min(args.maxResults ?? 10, 30);
+        const limited = classified.slice(0, maxResults);
+
+        const upcomingEvents = limited
+            .filter((c) => !c.isPast)
+            .map((c) => c.event);
+        const pastEvents = limited
+            .filter((c) => c.isPast)
+            .map((c) => c.event);
+
+        if (upcomingEvents.length === 0 && pastEvents.length === 0) {
             return JSON.stringify({
                 status: "no_results",
                 message:
-                    "Nenašel jsem žádné nadcházející akce odpovídající vašemu dotazu.",
+                    "Nenašel jsem žádné akce odpovídající vašemu dotazu.",
             });
         }
 
-        return JSON.stringify({
-            status: "ok",
-            count: events.length,
-            events,
-        });
+        const result: Record<string, unknown> = { status: "ok" };
+
+        if (upcomingEvents.length > 0) {
+            result.upcomingEvents = upcomingEvents;
+            result.upcomingCount = upcomingEvents.length;
+        }
+
+        if (pastEvents.length > 0) {
+            result.pastEvents = pastEvents;
+            result.pastCount = pastEvents.length;
+            result.pastEventsNote =
+                "Tyto akce již proběhly. Zmiň je uživateli pouze jako referenci a upozorni, že již proběhly.";
+        }
+
+        return JSON.stringify(result);
     } catch (error) {
         LoggerService.logError(error as Error, "handleGetEvents");
         return JSON.stringify({

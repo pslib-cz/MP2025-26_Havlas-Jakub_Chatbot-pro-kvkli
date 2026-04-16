@@ -92,7 +92,7 @@ export const searchWebsiteSpec: ChatCompletionTool = {
     function: {
         name: "searchWebsite",
         description:
-            "LAST RESORT — Search the library website using semantic search. Use ONLY for: registration, fees, rules, wifi, printing, general services. FORBIDDEN queries (use the dedicated tool instead): otevírací doba / otevřeno / zavřeno → getOpeningHours; pobočka / Machnín / Rochlice / Vesec → getOfficeInfo or getOpeningHours; kontakt / telefon / email → getContact; akce / událost → getEvents. This tool returns OUTDATED cached data — the dedicated tools scrape LIVE data and are ALWAYS more accurate.",
+            "LAST RESORT — Search the library website using semantic search. Use ONLY for: registration, fees, rules, wifi, printing, general services. FORBIDDEN queries (use the dedicated tool instead): otevírací doba / otevřeno / zavřeno → getOpeningHours; pobočka / Machnín / Rochlice / Vesec → getOfficeInfo or getOpeningHours; kontakt / telefon / email → getContact; akce / událost / kurz / workshop / školení → getEvents. This tool returns OUTDATED cached data — the dedicated tools scrape LIVE data and are ALWAYS more accurate.",
         parameters: {
             type: "object",
             properties: {
@@ -165,7 +165,7 @@ export const getEventsSpec: ChatCompletionTool = {
     function: {
         name: "getEvents",
         description:
-            "Get upcoming events at the library (lectures, exhibitions, workshops, concerts, readings, etc.). Scrapes live data from the library website. Use this when the user asks about events, what's happening at the library, upcoming programs, or cultural activities.",
+            "Get events at the library (lectures, exhibitions, workshops, courses, concerts, readings, trainings, etc.). Scrapes live data from the library website and classifies events as upcoming (future) or past. Use this when the user asks about events, courses (kurzy), workshops, trainings (školení), what's happening at the library, upcoming programs, or cultural activities. Results are split into 'upcomingEvents' and 'pastEvents' — always prioritize upcoming events in your answer. Mention past events only as reference and clearly state they already happened.",
         parameters: {
             type: "object",
             properties: {
