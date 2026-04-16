@@ -91,13 +91,13 @@ export function createToolRegistry(): ToolRegistry {
         handleGetEvents,
     );
 
-    // ── DISABLED: searchWebsite always picked incorrectly by the model ──
-    // registry.register(
-    //     "searchWebsite",
-    //     searchWebsiteSpec,
-    //     SearchWebsiteSchema,
-    //     handleSearchWebsite,
-    // );
+    // ── Fallback: semantic search (use ONLY when no dedicated tool fits) ──
+    registry.register(
+        "searchWebsite",
+        searchWebsiteSpec,
+        SearchWebsiteSchema,
+        handleSearchWebsite,
+    );
 
     return registry;
 }
