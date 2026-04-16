@@ -10,7 +10,11 @@ import { vectorService } from "../book.service";
 import { searchSimilarContent } from "../site.service";
 import { queryCatalogService } from "../queryCatalog.service";
 import { contactService } from "../contact.service";
-import { scrapeOpeningHours, scrapeEvents } from "../scraper.service";
+import {
+    scrapeOpeningHours,
+    scrapeEvents,
+    scrapeOfficeInfo,
+} from "../scraper.service";
 import LoggerService from "../logger.service";
 import type { BookItem } from "../../../types";
 
@@ -54,6 +58,10 @@ const GetOpeningHoursSchema = z.object({
 const GetEventsSchema = z.object({
     type: z.string().optional(),
     maxResults: z.number().optional(),
+});
+
+const GetOfficeInfoSchema = z.object({
+    branch: z.string().optional(),
 });
 
 // ─── OpenAI Function Specs ────────────────────────────────────────────────────
@@ -229,6 +237,25 @@ const getEventsSpec: ChatCompletionTool = {
                     type: "number",
                     description:
                         "Maximum number of events to return (default 10, max 30)",
+                },
+            },
+        },
+    },
+};
+
+const getOfficeInfoSpec: ChatCompletionTool = {
+    type: "function",
+    function: {
+        name: "getOfficeInfo",
+        description:
+            "Get comprehensive information about a library branch: opening hours, contact details (phone, email, address, transport), librarian name, and available services. Scrapes live data from the library website. Use this when the user asks about a specific branch — what it offers, how to get there, who works there, or its full details. For just opening hours across all branches, prefer getOpeningHours instead.",
+        parameters: {
+            type: "object",
+            properties: {
+                branch: {
+                    type: "string",
+                    description:
+                        "Branch name to look up (e.g. 'Rochlice', 'Machnín', 'Vesec', 'Hlavní budova'). If omitted, returns info for all branches.",
                 },
             },
         },
@@ -527,6 +554,41 @@ async function handleGetEvents(
     }
 }
 
+async function handleGetOfficeInfo(
+    args: z.infer<typeof GetOfficeInfoSchema>,
+): Promise<string> {
+    LoggerService.logAIFunctionCall("getOfficeInfo", args);
+
+    try {
+        const offices = await scrapeOfficeInfo(args.branch);
+
+        LoggerService.info("getOfficeInfo: results", {
+            branch: args.branch ?? "all",
+            resultCount: offices.length,
+            branches: offices.map((o) => o.branch),
+        });
+
+        if (offices.length === 0) {
+            return JSON.stringify({
+                status: "no_results",
+                message: "Nepodařilo se najít informace pro zadanou pobočku.",
+            });
+        }
+
+        return JSON.stringify({
+            status: "ok",
+            branches: offices,
+        });
+    } catch (error) {
+        LoggerService.logError(error as Error, "handleGetOfficeInfo");
+        return JSON.stringify({
+            status: "error",
+            message:
+                "Nepodařilo se načíst informace o pobočce z webu knihovny.",
+        });
+    }
+}
+
 // ─── Registry Factory ─────────────────────────────────────────────────────────
 
 /**
@@ -576,6 +638,12 @@ export function createToolRegistry(): ToolRegistry {
         getEventsSpec,
         GetEventsSchema,
         handleGetEvents,
+    );
+    registry.register(
+        "getOfficeInfo",
+        getOfficeInfoSpec,
+        GetOfficeInfoSchema,
+        handleGetOfficeInfo,
     );
 
     return registry;
