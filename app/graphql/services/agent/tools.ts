@@ -4,7 +4,12 @@ import { z } from "zod";
 import type { ChatCompletionTool } from "openai/resources/chat";
 import { ToolRegistry } from "./ToolRegistry";
 import { DEFAULT_COUNT, MAX_COUNT, FETCH_ALL_COUNT } from "./constants";
-import { sanitizeInput, normalizeCount, toAsciiOnly } from "./preprocessing";
+import {
+    sanitizeInput,
+    normalizeCount,
+    toAsciiOnly,
+    normalizeUnicode,
+} from "./preprocessing";
 import { formatBooks, filterByAuthor, ensureBookUrls } from "./formatting";
 import { vectorService } from "../book.service";
 import { searchSimilarContent } from "../site.service";
@@ -13,6 +18,8 @@ import { contactService } from "../contact.service";
 import {
     scrapeOpeningHours,
     scrapeEvents,
+    getCachedOpeningHours,
+    getCachedEvents,
     scrapeOfficeInfo,
 } from "../scraper.service";
 import LoggerService from "../logger.service";
@@ -24,6 +31,7 @@ const SearchCatalogSchema = z.object({
     searchType: z.enum(["title", "author", "general"]),
     query: z.string().min(1),
     count: z.number().optional(),
+    fetchAll: z.boolean().optional(),
 });
 
 const RecommendBooksSchema = z.object({
@@ -47,9 +55,13 @@ const GetContactSchema = z
         role: z.string().optional(),
         department: z.string().optional(),
     })
-    .refine((d) => d.name || d.role || d.department, {
-        message: "At least one search parameter is required",
-    });
+    .refine(
+        (d: { name?: string; role?: string; department?: string }) =>
+            d.name || d.role || d.department,
+        {
+            message: "At least one search parameter is required",
+        },
+    );
 
 const GetOpeningHoursSchema = z.object({
     branch: z.string().optional(),
@@ -89,7 +101,12 @@ const searchCatalogSpec: ChatCompletionTool = {
                 count: {
                     type: "number",
                     description:
-                        "How many books to return. Use exactly what the user requested (e.g. 3 if they said 'give me 3 books'). If the user says 'all', 'všechny', or any similar word meaning all/every, use 20. Defaults to 5 if not specified. Maximum 20.",
+                        "How many books to return. Use exactly what the user requested (e.g. 3 if they said 'give me 3 books'). Defaults to 5 if not specified. Maximum 20.",
+                },
+                fetchAll: {
+                    type: "boolean",
+                    description:
+                        "Set to true ONLY when the user explicitly says 'all', 'všechny', 'vše', or similar words meaning every/all. Do NOT set this when the user asks for a specific number. When true, count is ignored.",
                 },
             },
             required: ["searchType", "query"],
@@ -102,14 +119,14 @@ const recommendBooksSpec: ChatCompletionTool = {
     function: {
         name: "recommendBooks",
         description:
-            "Recommend books based on themes, genre, literary period, author era, reader age, or similar books. Also use this as a FALLBACK when searching for books by a specific author if catalog search returns no results.",
+            "Recommend books based on themes, genre, literary period, author era, reader age, or similar books. Also use this as a FALLBACK when searching for books by a specific author if catalog search returns no results. You can pass a book title directly as the query — the backend will automatically look up the book's description and subjects for more accurate recommendations.",
         parameters: {
             type: "object",
             properties: {
                 query: {
                     type: "string",
                     description:
-                        "User request for book recommendations (themes, era, authors, genre, etc.)",
+                        "Thematic query for the vector search. Can be a description, subjects, genre, or a book title — the backend will automatically enrich short title queries with metadata for better results.",
                 },
                 count: {
                     type: "number",
@@ -268,7 +285,7 @@ async function handleSearchCatalog(
     args: z.infer<typeof SearchCatalogSchema>,
 ): Promise<string> {
     const query = sanitizeInput(args.query);
-    const wantsAll = args.count != null && args.count >= MAX_COUNT;
+    const wantsAll = args.fetchAll === true;
     const limit = wantsAll
         ? FETCH_ALL_COUNT
         : normalizeCount(args.count, DEFAULT_COUNT);
@@ -343,6 +360,191 @@ async function handleSearchCatalog(
     });
 }
 
+/**
+ * Short queries (≤ TITLE_ENRICHMENT_THRESHOLD words) that look like bare book
+ * titles are automatically enriched via a catalog lookup so that the vector
+ * search receives the book's *description & subjects* instead of just the title
+ * (which would match on literal words like "větrné" → meteorology books).
+ *
+ * Enrichment pipeline:
+ * 1. Strip common recommendation phrases to extract the bare book title
+ * 2. Try IPAC catalog search with fuzzy title matching
+ * 3. If catalog fails → fall back to ChromaDB vector search for the title
+ * 4. If both fail → use the original query as-is
+ */
+const TITLE_ENRICHMENT_THRESHOLD = 12;
+
+/**
+ * Common Czech phrases the AI wraps around a book title when calling
+ * recommendBooks. These are stripped to extract the bare title for lookup.
+ */
+const RECOMMENDATION_PREFIXES = [
+    /^podobn[éá]\s+knih[yaou]\s+jako\s+/i,
+    /^knih[yaou]\s+podobn[éá]\s+/i,
+    /^doporuč(?:it|ení)?\s+(?:mi\s+)?(?:knih[yaou]\s+)?(?:podobn[éá]\s+)?(?:jako\s+)?/i,
+    /^něco\s+podobného\s+jako\s+/i,
+    /^hledám\s+(?:knih[yaou]\s+)?podobn[éá]\s+(?:jako\s+)?/i,
+    /^chci\s+(?:knih[yaou]\s+)?podobn[éá]\s+(?:jako\s+)?/i,
+];
+
+const RECOMMENDATION_SUFFIXES = [
+    /\s+(?:podobn[éá]\s+)?knih[yaou]$/i,
+    /\s+doporuč(?:ení|it)?$/i,
+];
+
+/**
+ * Strip recommendation phrasing from around a book title.
+ * E.g. "podobné knihy jako Na větrné hůrce" → "Na větrné hůrce"
+ */
+function extractTitleFromQuery(query: string): string {
+    let stripped = query.trim();
+    for (const prefix of RECOMMENDATION_PREFIXES) {
+        stripped = stripped.replace(prefix, "");
+    }
+    for (const suffix of RECOMMENDATION_SUFFIXES) {
+        stripped = stripped.replace(suffix, "");
+    }
+    stripped = stripped.trim();
+    // Only use the stripped version if it's shorter and non-empty
+    return stripped.length > 0 && stripped.length < query.trim().length
+        ? stripped
+        : query.trim();
+}
+
+/**
+ * Normalize a title for fuzzy comparison: strip diacritics, lowercase,
+ * remove trailing punctuation like " /" that the catalog often appends.
+ */
+function normalizeTitleForMatch(title: string): string {
+    return normalizeUnicode(title)
+        .toLowerCase()
+        .replace(/\s*\/\s*$/, "") // trailing " /"
+        .replace(/[^\w\s]/g, "") // non-word chars
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function extractEnrichment(book: {
+    description?: string;
+    subjects?: string;
+}): string | null {
+    const parts: string[] = [];
+    if (book.description) parts.push(book.description);
+    if (book.subjects) parts.push(`Témata: ${book.subjects}`);
+    return parts.length > 0 ? parts.join(". ") : null;
+}
+
+async function tryEnrichTitleQuery(
+    query: string,
+): Promise<{ enrichedQuery: string; sourceTitle: string | null }> {
+    const wordCount = query.trim().split(/\s+/).length;
+    if (wordCount > TITLE_ENRICHMENT_THRESHOLD) {
+        return { enrichedQuery: query, sourceTitle: null };
+    }
+
+    // Strip recommendation phrasing to get the bare title
+    const bareTitle = extractTitleFromQuery(query);
+    const searchQuery = bareTitle;
+    const queryNorm = normalizeTitleForMatch(bareTitle);
+
+    if (bareTitle !== query.trim()) {
+        LoggerService.info(
+            "recommendBooks: stripped recommendation phrasing from query",
+            {
+                originalQuery: query,
+                extractedTitle: bareTitle,
+            },
+        );
+    }
+
+    // ── Step 1: Try catalog search with fuzzy matching ────────────────
+    try {
+        const catalogResults = await queryCatalogService.searchByTitle(
+            searchQuery,
+            5,
+        );
+
+        const match = catalogResults.find((b) => {
+            const titleNorm = normalizeTitleForMatch(b.title);
+            return (
+                titleNorm.includes(queryNorm) || queryNorm.includes(titleNorm)
+            );
+        });
+
+        if (match) {
+            const enriched = extractEnrichment(match);
+            if (enriched) {
+                LoggerService.info(
+                    "recommendBooks: enriched title query from catalog",
+                    {
+                        originalQuery: query,
+                        matchedTitle: match.title,
+                        enrichedQueryPreview: enriched.substring(0, 200),
+                    },
+                );
+                return { enrichedQuery: enriched, sourceTitle: match.title };
+            }
+        }
+    } catch (err) {
+        LoggerService.warn(
+            "recommendBooks: catalog enrichment failed, trying ChromaDB fallback",
+            {
+                query,
+                error: (err as Error).message,
+            },
+        );
+    }
+
+    // ── Step 2: ChromaDB vector fallback ──────────────────────────────
+    try {
+        const vectorResults = (await vectorService.searchBooks(
+            searchQuery,
+            3,
+        )) as BookItem[];
+
+        const match = vectorResults.find((b) => {
+            const titleNorm = normalizeTitleForMatch(b.title);
+            return (
+                titleNorm.includes(queryNorm) || queryNorm.includes(titleNorm)
+            );
+        });
+
+        if (match) {
+            const enriched = extractEnrichment(match);
+            if (enriched) {
+                LoggerService.info(
+                    "recommendBooks: enriched title query from ChromaDB fallback",
+                    {
+                        originalQuery: query,
+                        matchedTitle: match.title,
+                        enrichedQueryPreview: enriched.substring(0, 200),
+                    },
+                );
+                return { enrichedQuery: enriched, sourceTitle: match.title };
+            }
+        }
+
+        LoggerService.warn(
+            "recommendBooks: no matching title found in catalog or ChromaDB",
+            {
+                query,
+                catalogAttempted: true,
+                chromaAttempted: true,
+            },
+        );
+    } catch (err) {
+        LoggerService.warn(
+            "recommendBooks: ChromaDB fallback also failed, using original query",
+            {
+                query,
+                error: (err as Error).message,
+            },
+        );
+    }
+
+    return { enrichedQuery: query, sourceTitle: null };
+}
+
 async function handleRecommendBooks(
     args: z.infer<typeof RecommendBooksSchema>,
 ): Promise<string> {
@@ -351,16 +553,34 @@ async function handleRecommendBooks(
 
     LoggerService.logAIFunctionCall("recommendBooks", { query, limit });
 
-    const books = (await vectorService.searchBooks(query, limit)) as BookItem[];
+    // Safeguard: if the AI passed a bare book title instead of a thematic
+    // description, look up the book first and use its description/subjects.
+    const { enrichedQuery, sourceTitle } = await tryEnrichTitleQuery(query);
 
-    if (books.length === 0) {
+    const books = (await vectorService.searchBooks(
+        enrichedQuery,
+        // Fetch one extra so we can drop the source book if present
+        sourceTitle ? limit + 1 : limit,
+    )) as BookItem[];
+
+    // Remove the source book itself from recommendations
+    let filtered = books;
+    if (sourceTitle) {
+        const srcLower = sourceTitle.toLowerCase();
+        filtered = books.filter(
+            (b) => !b.title.toLowerCase().includes(srcLower),
+        );
+    }
+    filtered = filtered.slice(0, limit);
+
+    if (filtered.length === 0) {
         return JSON.stringify({
             status: "no_results",
             message: "Nenašel jsem žádné knihy odpovídající vašemu dotazu.",
         });
     }
 
-    const booksWithUrls = ensureBookUrls(books);
+    const booksWithUrls = ensureBookUrls(filtered);
 
     return JSON.stringify({
         status: "ok",
@@ -469,7 +689,7 @@ async function handleGetOpeningHours(
     LoggerService.logAIFunctionCall("getOpeningHours", args);
 
     try {
-        let branches = await scrapeOpeningHours();
+        let branches = await getCachedOpeningHours();
 
         if (args.branch) {
             const query = args.branch
@@ -512,7 +732,7 @@ async function handleGetEvents(
     LoggerService.logAIFunctionCall("getEvents", args);
 
     try {
-        let events = await scrapeEvents();
+        let events = await getCachedEvents();
 
         if (args.type) {
             const query = args.type

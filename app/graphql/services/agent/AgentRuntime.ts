@@ -50,6 +50,17 @@ export class AgentRuntime {
         const toolSpecs = this.registry.getSpecs();
         let iterations = 0;
 
+        // Log the last user message so we can trace how the agent handles it
+        const messages = history.getMessages();
+        const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+        LoggerService.info("AgentRuntime: starting run", {
+            userMessage:
+                typeof lastUserMsg?.content === "string"
+                    ? lastUserMsg.content
+                    : JSON.stringify(lastUserMsg?.content),
+            totalMessages: messages.length,
+        });
+
         while (iterations < this.maxIterations) {
             const response = await chatCompletion({
                 model: this.model,
@@ -65,6 +76,11 @@ export class AgentRuntime {
             if (!toolCalls || toolCalls.length === 0) {
                 const answer = message.content ?? this.fallback;
                 history.addAssistant(answer);
+
+                LoggerService.info("AgentRuntime: final answer produced", {
+                    iterations,
+                    answerPreview: answer.substring(0, 200),
+                });
 
                 return {
                     answer,
@@ -94,27 +110,63 @@ export class AgentRuntime {
                 })),
             );
 
-            // Execute each tool call and inject the result
-            for (const toolCall of functionToolCalls) {
+            // Execute tool calls in parallel, deduplicating identical calls
+            const dedupeMap = new Map<string, Promise<string>>();
+            const toolPromises = functionToolCalls.map((toolCall) => {
                 const { name, arguments: rawArgs } = toolCall.function;
+                const dedupeKey = `${name}:${rawArgs}`;
 
                 LoggerService.info("AgentRuntime: executing tool", {
                     tool: name,
                     iteration: iterations,
                     toolCallId: toolCall.id,
+                    arguments: rawArgs,
                 });
 
-                const result = await this.registry.execute(
-                    name,
-                    rawArgs,
-                    this.fallback,
-                );
+                let execution = dedupeMap.get(dedupeKey);
+                if (!execution) {
+                    execution = this.registry.execute(
+                        name,
+                        rawArgs,
+                        this.fallback,
+                    );
+                    dedupeMap.set(dedupeKey, execution);
+                } else {
+                    LoggerService.debug("AgentRuntime: reusing deduplicated tool call", {
+                        tool: name,
+                        toolCallId: toolCall.id,
+                    });
+                }
 
-                LoggerService.debug("AgentRuntime: tool result received", {
-                    tool: name,
-                    resultLength: result.length,
-                    resultPreview: result.substring(0, 100),
-                });
+                return { toolCall, name, resultPromise: execution };
+            });
+
+            const settled = await Promise.allSettled(
+                toolPromises.map((tp) => tp.resultPromise),
+            );
+
+            // Inject results in original order
+            for (let i = 0; i < toolPromises.length; i++) {
+                const { toolCall, name } = toolPromises[i];
+                const outcome = settled[i];
+                const result =
+                    outcome.status === "fulfilled"
+                        ? outcome.value
+                        : this.fallback;
+
+                if (outcome.status === "rejected") {
+                    LoggerService.warn("AgentRuntime: tool call failed", {
+                        tool: name,
+                        toolCallId: toolCall.id,
+                        error: String(outcome.reason),
+                    });
+                } else {
+                    LoggerService.debug("AgentRuntime: tool result received", {
+                        tool: name,
+                        resultLength: result.length,
+                        resultPreview: result.substring(0, 100),
+                    });
+                }
 
                 history.addToolResult(toolCall.id, result);
 

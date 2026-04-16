@@ -15,6 +15,61 @@ const EVENTS_URL = "https://www.kvkli.cz/akce?p=99";
 const BASE_URL = "https://www.kvkli.cz";
 const REQUEST_TIMEOUT = 10000;
 
+// ─── TTL Cache with In-Flight Deduplication ───────────────────────────────────
+
+/** Cache TTL in milliseconds (10 minutes — same as contact service) */
+const CACHE_TTL = 10 * 60 * 1000;
+
+interface CacheEntry<T> {
+    data: T;
+    timestamp: number;
+}
+
+/**
+ * Generic TTL cache with in-flight request deduplication.
+ * Multiple concurrent calls to `get()` while the cache is cold will share
+ * a single fetch, preventing duplicate outbound requests.
+ */
+class TtlCache<T> {
+    private entry: CacheEntry<T> | null = null;
+    private inflight: Promise<T> | null = null;
+
+    constructor(
+        private readonly fetcher: () => Promise<T>,
+        private readonly label: string,
+        private readonly ttl = CACHE_TTL,
+    ) {}
+
+    async get(): Promise<T> {
+        // Return cached data if still fresh
+        if (this.entry && Date.now() - this.entry.timestamp < this.ttl) {
+            return this.entry.data;
+        }
+
+        // Deduplicate concurrent requests
+        if (this.inflight) {
+            return this.inflight;
+        }
+
+        this.inflight = this.fetcher()
+            .then((data) => {
+                this.entry = { data, timestamp: Date.now() };
+                LoggerService.info(`${this.label}: cache refreshed`);
+                return data;
+            })
+            .finally(() => {
+                this.inflight = null;
+            });
+
+        return this.inflight;
+    }
+
+    /** Force-clear the cache (e.g. for admin/debug). */
+    invalidate(): void {
+        this.entry = null;
+    }
+}
+
 /**
  * Scrape contacts from the KVKLI website.
  * Parses the kontaktGroup structure to extract names, roles, departments,
@@ -617,4 +672,25 @@ function findMatchingHours(
     }
 
     return undefined;
+}
+
+// ─── Cached Wrappers (use these instead of the raw scrape functions) ──────────
+
+const openingHoursCache = new TtlCache(scrapeOpeningHours, "openingHoursCache");
+const eventsCache = new TtlCache(scrapeEvents, "eventsCache");
+
+/** Cached version of scrapeOpeningHours — TTL + in-flight deduplication. */
+export async function getCachedOpeningHours(): Promise<BranchOpeningHours[]> {
+    return openingHoursCache.get();
+}
+
+/** Cached version of scrapeEvents — TTL + in-flight deduplication. */
+export async function getCachedEvents(): Promise<LibraryEvent[]> {
+    return eventsCache.get();
+}
+
+/** Force-clear all scraper caches (admin/debug). */
+export function invalidateScraperCaches(): void {
+    openingHoursCache.invalidate();
+    eventsCache.invalidate();
 }
