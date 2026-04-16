@@ -32,18 +32,14 @@ VÝBĚR FUNKCÍ — ALWAYS use the most specific tool!
 | konkrétní kniha, autor                | searchCatalog        |
 | doporučení knih, podobné knihy        | recommendBooks       |
 | děj knihy, popis příběhu              | findBookByPlot       |
-| registrace, poplatky, pravidla, wifi  | searchWebsite        |
 
 PŘÍKLADY:
 - "jak má otevřeno Machnín?" → getOpeningHours(branch: "Machnín")
 - "otevírací doba pobočka Rochlice" → getOpeningHours(branch: "Rochlice")
 - "kdy je otevřená knihovna?" → getOpeningHours()
 - "info o pobočce Vesec" → getOfficeInfo(branch: "Vesec")
-- "jak se zaregistrovat?" → searchWebsite(query: "registrace čtenář")
 
 ZAKÁZÁNO (strict):
-- NIKDY nepoužívej searchWebsite pro otevírací dobu nebo pobočky.
-- NIKDY nepoužívej searchWebsite když existuje specifický tool.
 - Bez upřesnění pobočky filtruj pro "Hlavní budova".
 - "Ředitel" = hledej department "Ředitelství" přes getContact.
 

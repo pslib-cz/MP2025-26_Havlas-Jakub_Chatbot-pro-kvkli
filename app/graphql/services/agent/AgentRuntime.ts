@@ -52,7 +52,9 @@ export class AgentRuntime {
 
         // Log the last user message so we can trace how the agent handles it
         const messages = history.getMessages();
-        const lastUserMsg = [...messages].reverse().find((m) => m.role === "user");
+        const lastUserMsg = [...messages]
+            .reverse()
+            .find((m) => m.role === "user");
         LoggerService.info("AgentRuntime: starting run", {
             userMessage:
                 typeof lastUserMsg?.content === "string"
@@ -111,6 +113,20 @@ export class AgentRuntime {
             );
 
             // Execute tool calls in parallel, deduplicating identical calls
+            // Log ALL chosen tools prominently for debugging tool selection
+            const chosenTools = functionToolCalls.map((tc) => ({
+                name: tc.function.name,
+                args: tc.function.arguments,
+            }));
+            LoggerService.warn("AgentRuntime: AI CHOSE TOOLS", {
+                iteration: iterations,
+                tools: chosenTools,
+                userMessage:
+                    typeof lastUserMsg?.content === "string"
+                        ? lastUserMsg.content.substring(0, 200)
+                        : "(non-string)",
+            });
+
             const dedupeMap = new Map<string, Promise<string>>();
             const toolPromises = functionToolCalls.map((toolCall) => {
                 const { name, arguments: rawArgs } = toolCall.function;
@@ -132,10 +148,13 @@ export class AgentRuntime {
                     );
                     dedupeMap.set(dedupeKey, execution);
                 } else {
-                    LoggerService.debug("AgentRuntime: reusing deduplicated tool call", {
-                        tool: name,
-                        toolCallId: toolCall.id,
-                    });
+                    LoggerService.debug(
+                        "AgentRuntime: reusing deduplicated tool call",
+                        {
+                            tool: name,
+                            toolCallId: toolCall.id,
+                        },
+                    );
                 }
 
                 return { toolCall, name, resultPromise: execution };
