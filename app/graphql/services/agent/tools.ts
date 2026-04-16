@@ -168,7 +168,7 @@ const searchWebsiteSpec: ChatCompletionTool = {
     function: {
         name: "searchWebsite",
         description:
-            "Search the library website for general information about services, registration, fees, rules, etc. Do NOT use this for opening hours, contacts, events, or branch details — use the dedicated tools (getOpeningHours, getOfficeInfo, getContact, getEvents) instead. You can formulate your own search query — use expanded terms and synonyms for better results. Do NOT use this for greetings or trivial questions.",
+            "LAST RESORT — Search the library website using semantic search. Use this ONLY when no other dedicated tool can answer the question (e.g. for registration info, fees, rules, general services). NEVER use this for: opening hours (use getOpeningHours), branch info (use getOfficeInfo), contacts (use getContact), or events (use getEvents). Those dedicated tools scrape LIVE data and are always more accurate than this semantic search which may return outdated information.",
         parameters: {
             type: "object",
             properties: {
@@ -857,6 +857,7 @@ async function handleGetOfficeInfo(
 export function createToolRegistry(): ToolRegistry {
     const registry = new ToolRegistry();
 
+    // ── Book tools ────────────────────────────────────────────────────
     registry.register(
         "searchCatalog",
         searchCatalogSpec,
@@ -875,11 +876,19 @@ export function createToolRegistry(): ToolRegistry {
         FindBookByPlotSchema,
         handleFindBookByPlot,
     );
+
+    // ── Live-data tools (preferred for structured queries) ────────────
     registry.register(
-        "searchWebsite",
-        searchWebsiteSpec,
-        SearchWebsiteSchema,
-        handleSearchWebsite,
+        "getOpeningHours",
+        getOpeningHoursSpec,
+        GetOpeningHoursSchema,
+        handleGetOpeningHours,
+    );
+    registry.register(
+        "getOfficeInfo",
+        getOfficeInfoSpec,
+        GetOfficeInfoSchema,
+        handleGetOfficeInfo,
     );
     registry.register(
         "getContact",
@@ -888,22 +897,18 @@ export function createToolRegistry(): ToolRegistry {
         handleGetContact,
     );
     registry.register(
-        "getOpeningHours",
-        getOpeningHoursSpec,
-        GetOpeningHoursSchema,
-        handleGetOpeningHours,
-    );
-    registry.register(
         "getEvents",
         getEventsSpec,
         GetEventsSchema,
         handleGetEvents,
     );
+
+    // ── Fallback: semantic search (use ONLY when no dedicated tool fits) ──
     registry.register(
-        "getOfficeInfo",
-        getOfficeInfoSpec,
-        GetOfficeInfoSchema,
-        handleGetOfficeInfo,
+        "searchWebsite",
+        searchWebsiteSpec,
+        SearchWebsiteSchema,
+        handleSearchWebsite,
     );
 
     return registry;
