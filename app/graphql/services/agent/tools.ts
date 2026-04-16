@@ -168,7 +168,7 @@ const searchWebsiteSpec: ChatCompletionTool = {
     function: {
         name: "searchWebsite",
         description:
-            "Search the library website for information about services, events, contacts, branches, opening hours, registration, fees, etc. Use this when you need specific information from the library's website to answer the user's question. You can formulate your own search query — use expanded terms and synonyms for better results. Do NOT use this for greetings or trivial questions.",
+            "Search the library website for general information about services, registration, fees, rules, etc. Do NOT use this for opening hours, contacts, events, or branch details — use the dedicated tools (getOpeningHours, getOfficeInfo, getContact, getEvents) instead. You can formulate your own search query — use expanded terms and synonyms for better results. Do NOT use this for greetings or trivial questions.",
         parameters: {
             type: "object",
             properties: {
