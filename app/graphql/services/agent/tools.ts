@@ -627,6 +627,46 @@ async function handleSearchWebsite(
 
     LoggerService.logAIFunctionCall("searchWebsite", { query, maxResults });
 
+    // ── Guard: redirect opening-hours / branch queries to live-scraping tools ─
+    const queryNorm = query
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+
+    const OPENING_HOURS_KEYWORDS = [
+        "oteviraci doba",
+        "otevira",
+        "otevreno",
+        "zavreno",
+        "hodiny",
+        "provozni doba",
+    ];
+    const BRANCH_NAMES = [
+        "machnin",
+        "rochlice",
+        "vesec",
+        "ruprechtice",
+        "kraluvhaj",
+        "kraluv haj",
+        "kunraticka",
+        "hlavni budova",
+    ];
+
+    const isOpeningHoursQuery = OPENING_HOURS_KEYWORDS.some((kw) =>
+        queryNorm.includes(kw),
+    );
+    const mentionedBranch = BRANCH_NAMES.find((b) => queryNorm.includes(b));
+
+    if (isOpeningHoursQuery || mentionedBranch) {
+        LoggerService.warn(
+            "searchWebsite: redirecting to getOpeningHours (query matched opening-hours/branch pattern)",
+            { query, isOpeningHoursQuery, mentionedBranch },
+        );
+        return handleGetOpeningHours({
+            branch: mentionedBranch ?? undefined,
+        });
+    }
+
     let similarContent: Awaited<ReturnType<typeof searchSimilarContent>> = [];
     try {
         similarContent = await searchSimilarContent(query, maxResults);
