@@ -128,7 +128,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
 
 // ─── SVG icons ────────────────────────────────────────────────────────────────
 
-const BookIcon = ({ color = "#3C426B" }: { color?: string }) => (
+const BookIcon = ({ color = "#000000" }: { color?: string }) => (
     <svg
         width="27"
         height="26"
