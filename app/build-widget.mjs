@@ -16,7 +16,7 @@ await build({
     format: "iife",
     // Self-invoking function — no globals leaked
     globalName: undefined,
-    outfile: "widget.js",
+    outfile: "widget/widget.js",
     define: {
         "process.env.NODE_ENV": '"production"',
     },
