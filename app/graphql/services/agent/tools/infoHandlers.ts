@@ -7,6 +7,7 @@ import { contactService } from "../../contact.service";
 import {
     getCachedOpeningHours,
     getCachedEvents,
+    scrapeEventsFiltered,
     scrapeOfficeInfo,
 } from "../../scraper.service";
 import LoggerService from "../../logger.service";
@@ -23,8 +24,18 @@ import {
 // ─── Czech date parsing for event classification ──────────────────────────────
 
 const CZECH_MONTHS: Record<string, number> = {
-    ledna: 0, února: 1, března: 2, dubna: 3, května: 4, června: 5,
-    července: 6, srpna: 7, září: 8, října: 9, listopadu: 10, prosince: 11,
+    ledna: 0,
+    února: 1,
+    března: 2,
+    dubna: 3,
+    května: 4,
+    června: 5,
+    července: 6,
+    srpna: 7,
+    září: 8,
+    října: 9,
+    listopadu: 10,
+    prosince: 11,
 };
 
 function parseCzechDate(dateStr: string): Date | null {
@@ -41,9 +52,20 @@ function parseCzechDate(dateStr: string): Date | null {
 // ─── Keyword lists for searchWebsite guards ───────────────────────────────────
 
 const EVENT_KEYWORDS = [
-    "kurz", "kurzy", "workshop", "workshopy", "skoleni",
-    "akce", "udalost", "udalosti", "prednaska", "prednasky",
-    "koncert", "vystava", "vystavy", "cteni",
+    "kurz",
+    "kurzy",
+    "workshop",
+    "workshopy",
+    "skoleni",
+    "akce",
+    "udalost",
+    "udalosti",
+    "prednaska",
+    "prednasky",
+    "koncert",
+    "vystava",
+    "vystavy",
+    "cteni",
 ];
 
 const OPENING_HOURS_KEYWORDS = [
@@ -226,9 +248,21 @@ export async function handleGetEvents(
     LoggerService.logAIFunctionCall("getEvents", args);
 
     try {
-        let events = await getCachedEvents();
+        // Determine whether to use filtered (live) or cached (unfiltered) scraping
+        const hasFilters =
+            args.date || args.category || args.place || args.fulltext;
 
-        if (args.type) {
+        let events = hasFilters
+            ? await scrapeEventsFiltered({
+                  date: args.date,
+                  category: args.category ?? args.type, // backward compat
+                  place: args.place,
+                  fulltext: args.fulltext,
+              })
+            : await getCachedEvents();
+
+        // Legacy: if only 'type' is used (no 'category'), filter client-side on cached data
+        if (!hasFilters && args.type) {
             const query = args.type
                 .normalize("NFD")
                 .replace(/[\u0300-\u036f]/g, "")
@@ -241,6 +275,26 @@ export async function handleGetEvents(
                     .toLowerCase();
                 return t.includes(query) || query.includes(t);
             });
+        }
+
+        // Also do client-side fulltext matching on title when fulltext is set
+        // (server-side may not be perfect)
+        if (args.fulltext) {
+            const ft = args.fulltext
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase();
+            const fulltextFiltered = events.filter((e) => {
+                const titleNorm = e.title
+                    .normalize("NFD")
+                    .replace(/[\u0300-\u036f]/g, "")
+                    .toLowerCase();
+                return titleNorm.includes(ft);
+            });
+            // Only narrow if it still has results; otherwise keep server results
+            if (fulltextFiltered.length > 0) {
+                events = fulltextFiltered;
+            }
         }
 
         // ── Classify events as upcoming vs past ──────────────────────
@@ -268,15 +322,12 @@ export async function handleGetEvents(
         const upcomingEvents = limited
             .filter((c) => !c.isPast)
             .map((c) => c.event);
-        const pastEvents = limited
-            .filter((c) => c.isPast)
-            .map((c) => c.event);
+        const pastEvents = limited.filter((c) => c.isPast).map((c) => c.event);
 
         if (upcomingEvents.length === 0 && pastEvents.length === 0) {
             return JSON.stringify({
                 status: "no_results",
-                message:
-                    "Nenašel jsem žádné akce odpovídající vašemu dotazu.",
+                message: "Nenašel jsem žádné akce odpovídající vašemu dotazu.",
             });
         }
 

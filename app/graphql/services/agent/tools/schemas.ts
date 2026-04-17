@@ -44,6 +44,10 @@ export const GetOpeningHoursSchema = z.object({
 
 export const GetEventsSchema = z.object({
     type: z.string().optional(),
+    date: z.string().optional(),
+    category: z.string().optional(),
+    place: z.string().optional(),
+    fulltext: z.string().optional(),
     maxResults: z.number().optional(),
 });
 

@@ -213,8 +213,161 @@ export async function scrapeOpeningHours(): Promise<BranchOpeningHours[]> {
     return branches;
 }
 
+// ─── Event Filter Mappings ────────────────────────────────────────────────────
+
+/** Category name → query param ID on kvkli.cz */
+const EVENT_CATEGORY_MAP: Record<string, string> = {
+    "pro děti": "10071",
+    beseda: "18855",
+    konference: "18858",
+    kurz: "18859",
+    kvíz: "25086",
+    "literární vycházka": "35871",
+    projekce: "10069",
+    přednáška: "10066",
+    seminář: "19439",
+    soutěž: "29884",
+    "společenská akce": "18860",
+    výstava: "10068",
+    workshop: "19441",
+};
+
+/** Branch name → query param ID on kvkli.cz */
+const EVENT_PLACE_MAP: Record<string, string> = {
+    "hlavní budova": "10080",
+    "králův háj": "10081",
+    kunratická: "10082",
+    machnín: "10083",
+    rochlice: "10084",
+    ruprechtice: "10085",
+    vesec: "10086",
+};
+
+export interface EventFilterParams {
+    date?: string; // YYYY-MM-DD
+    category?: string; // Czech category name (fuzzy matched)
+    place?: string; // Branch name (fuzzy matched)
+    fulltext?: string; // Free-text search
+}
+
+function normalizeForMatch(s: string): string {
+    return s
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
+}
+
+function fuzzyMatchKey(
+    input: string,
+    map: Record<string, string>,
+): string | undefined {
+    const norm = normalizeForMatch(input);
+    // Exact match first
+    for (const [key, value] of Object.entries(map)) {
+        if (normalizeForMatch(key) === norm) return value;
+    }
+    // Partial match
+    for (const [key, value] of Object.entries(map)) {
+        const keyNorm = normalizeForMatch(key);
+        if (keyNorm.includes(norm) || norm.includes(keyNorm)) return value;
+    }
+    return undefined;
+}
+
+function buildEventsUrl(params: EventFilterParams): string {
+    const url = new URL(`${BASE_URL}/akce`);
+
+    if (params.fulltext) {
+        url.searchParams.set("fulltext", params.fulltext);
+    }
+    if (params.date) {
+        url.searchParams.set("start", params.date);
+    }
+    if (params.category) {
+        const id = fuzzyMatchKey(params.category, EVENT_CATEGORY_MAP);
+        if (id) {
+            url.searchParams.append("t[]", id);
+        } else {
+            LoggerService.warn(
+                "scrapeEventsFiltered: unknown category, filtering client-side",
+                {
+                    category: params.category,
+                },
+            );
+        }
+    }
+    if (params.place) {
+        const id = fuzzyMatchKey(params.place, EVENT_PLACE_MAP);
+        if (id) {
+            url.searchParams.append("pob[]", id);
+        } else {
+            LoggerService.warn(
+                "scrapeEventsFiltered: unknown place, filtering client-side",
+                {
+                    place: params.place,
+                },
+            );
+        }
+    }
+    return url.toString();
+}
+
 /**
- * Scrape upcoming events from the KVKLI website.
+ * Scrape events with optional server-side filtering by date, category, and place.
+ * Falls back to the default events URL when no filters are provided.
+ */
+export async function scrapeEventsFiltered(
+    params: EventFilterParams = {},
+): Promise<LibraryEvent[]> {
+    const hasFilters =
+        params.date || params.category || params.place || params.fulltext;
+    const url = hasFilters ? buildEventsUrl(params) : EVENTS_URL;
+
+    LoggerService.info("scrapeEventsFiltered: fetching", {
+        url,
+        params,
+    });
+
+    const response = await axios.get(url, {
+        timeout: REQUEST_TIMEOUT,
+        headers: { "User-Agent": "KVKLI-Chatbot/1.0" },
+    });
+
+    const events = parseEventsHtml(response.data);
+
+    // Client-side fallback filtering for unrecognized category/place
+    let filtered = events;
+    if (
+        params.category &&
+        !fuzzyMatchKey(params.category, EVENT_CATEGORY_MAP)
+    ) {
+        const catNorm = normalizeForMatch(params.category);
+        filtered = filtered.filter((e) => {
+            if (!e.type) return false;
+            const tNorm = normalizeForMatch(e.type);
+            return tNorm.includes(catNorm) || catNorm.includes(tNorm);
+        });
+    }
+    if (params.place && !fuzzyMatchKey(params.place, EVENT_PLACE_MAP)) {
+        const placeNorm = normalizeForMatch(params.place);
+        filtered = filtered.filter((e) => {
+            if (!e.location) return false;
+            return normalizeForMatch(e.location).includes(placeNorm);
+        });
+    }
+
+    LoggerService.info("scrapeEventsFiltered: results", {
+        total: events.length,
+        afterFilter: filtered.length,
+        params,
+    });
+
+    return filtered;
+}
+
+/**
+ * Scrape upcoming events from the KVKLI website (unfiltered, for cache).
  * Parses date headings (h2) and akce_item cards within each date section.
  */
 export async function scrapeEvents(): Promise<LibraryEvent[]> {
@@ -223,7 +376,16 @@ export async function scrapeEvents(): Promise<LibraryEvent[]> {
         headers: { "User-Agent": "KVKLI-Chatbot/1.0" },
     });
 
-    const root = parse(response.data);
+    const events = parseEventsHtml(response.data);
+    LoggerService.info("Scraped events from KVKLI website", {
+        count: events.length,
+    });
+    return events;
+}
+
+/** Parse the events HTML into structured LibraryEvent objects. */
+function parseEventsHtml(html: string): LibraryEvent[] {
+    const root = parse(html);
     const events: LibraryEvent[] = [];
 
     const target = root.querySelector("#loadMoreTarget");
@@ -232,12 +394,18 @@ export async function scrapeEvents(): Promise<LibraryEvent[]> {
         return events;
     }
 
-    // Iterate through child nodes — h2 sets the current date, akce_list contains event items
+    // Iterate through child nodes — akce_daySep (with h2) sets the date, akce_list has items
     let currentDate = "";
     for (const child of target.childNodes) {
         if (!("tagName" in child)) continue;
         const el = child as import("node-html-parser").HTMLElement;
 
+        // Date separator: <div class="akce_daySep"><h2>...</h2></div> or bare <h2>
+        if (el.classList?.contains("akce_daySep")) {
+            const h2 = el.querySelector("h2");
+            if (h2) currentDate = h2.text.trim();
+            continue;
+        }
         if (el.tagName === "H2") {
             currentDate = el.text.trim();
             continue;
@@ -262,6 +430,14 @@ export async function scrapeEvents(): Promise<LibraryEvent[]> {
             // Details line: date/time range and price
             const detailsLeft =
                 link.querySelector(".details .l")?.text.trim() ?? "";
+
+            // Use the details line as the date (e.g. "18. duben, 13:00 - 17:00")
+            // falling back to the section heading ("Dnes", "Zítra", etc.)
+            const dateFromDetails = detailsLeft
+                .replace(/\s+/g, " ")
+                .replace(/(zdarma|dobrovolné|\d+\s*Kč).*$/i, "")
+                .trim();
+            const eventDate = dateFromDetails || currentDate;
 
             // Extract time — look for HH:MM pattern in the details
             const timeMatch = detailsLeft.match(/\b(\d{1,2}:\d{2})\b/);
@@ -310,7 +486,7 @@ export async function scrapeEvents(): Promise<LibraryEvent[]> {
             if (title) {
                 events.push({
                     title,
-                    date: currentDate,
+                    date: eventDate,
                     time,
                     type,
                     price,
@@ -321,10 +497,6 @@ export async function scrapeEvents(): Promise<LibraryEvent[]> {
             }
         }
     }
-
-    LoggerService.info("Scraped events from KVKLI website", {
-        count: events.length,
-    });
 
     return events;
 }

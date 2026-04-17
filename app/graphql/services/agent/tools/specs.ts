@@ -165,14 +165,34 @@ export const getEventsSpec: ChatCompletionTool = {
     function: {
         name: "getEvents",
         description:
-            "Get events at the library (lectures, exhibitions, workshops, courses, concerts, readings, trainings, etc.). Scrapes live data from the library website and classifies events as upcoming (future) or past. Use this when the user asks about events, courses (kurzy), workshops, trainings (školení), what's happening at the library, upcoming programs, or cultural activities. Results are split into 'upcomingEvents' and 'pastEvents' — always prioritize upcoming events in your answer. Mention past events only as reference and clearly state they already happened.",
+            "Get LIVE events at the library (lectures, exhibitions, workshops, courses, concerts, readings, etc.). Supports filtering by DATE, CATEGORY, PLACE, and free-text search. Use this when the user asks about events, what's happening, courses (kurzy), workshops, trainings (školení), or cultural programs. When the user mentions a specific date, pass it as the 'date' parameter. When they ask about a specific event by name (e.g. 'francouzská konverzace'), use the 'fulltext' parameter — do NOT put the event name in 'type' or 'category'. The 'type'/'category' is for broad categories like 'Přednáška', 'Výstava', 'Kurz', 'Workshop', etc. Results are split into 'upcomingEvents' and 'pastEvents'.",
         parameters: {
             type: "object",
             properties: {
+                fulltext: {
+                    type: "string",
+                    description:
+                        "Free-text search for event name or keyword (e.g. 'francouzská konverzace', 'Bavardons', 'šachový turnaj'). Use this when the user asks about a specific event by name.",
+                },
+                date: {
+                    type: "string",
+                    description:
+                        "Filter events from this date onwards, in YYYY-MM-DD format (e.g. '2026-04-20'). Use when the user asks about events on a specific date or after a date.",
+                },
+                category: {
+                    type: "string",
+                    description:
+                        "Event category filter. Available categories: Pro děti, Beseda, Konference, Kurz, Kvíz, Literární vycházka, Projekce, Přednáška, Seminář, Soutěž, Společenská akce, Výstava, Workshop.",
+                },
+                place: {
+                    type: "string",
+                    description:
+                        "Branch/place filter. Available places: Hlavní budova, Králův Háj, Kunratická, Machnín, Rochlice, Ruprechtice, Vesec.",
+                },
                 type: {
                     type: "string",
                     description:
-                        "Optional event type filter (e.g. 'Přednáška', 'Výstava', 'Workshop', 'Koncert', 'Čtení'). If omitted, returns all event types.",
+                        "DEPRECATED — use 'category' instead. Kept for backward compatibility.",
                 },
                 maxResults: {
                     type: "number",
