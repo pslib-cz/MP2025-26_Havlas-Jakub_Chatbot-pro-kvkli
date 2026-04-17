@@ -69,10 +69,17 @@ jobs:
               run: |
                   scp app/docker-compose.prod.vps.yml ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/docker-compose.prod.vps.yml
 
+            - name: Build widget bundle
+              working-directory: ./app
+              run: |
+                  npm ci
+                  node build-widget.mjs
+
             - name: Publish widget test page to VPS
               run: |
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/widget"
                   scp app/widget/widget-test.html ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/index.html
+                  scp app/widget/widget.js ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/widget.js
 
             - name: Deploy with Docker Compose (pull image)
               run: |
