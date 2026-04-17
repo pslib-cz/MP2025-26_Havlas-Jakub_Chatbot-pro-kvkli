@@ -75,11 +75,11 @@ jobs:
                   npm ci
                   node build-widget.mjs
 
-            - name: Publish widget test page to VPS
+            - name: Publish widget to VPS
               run: |
-                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/widget"
-                  scp app/widget/widget-test.html ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/index.html
+                  ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/widget && rm -f /var/www/widget/widget.js"
                   scp app/widget/widget.js ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/widget.js
+                  scp app/widget/widget-test.html ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/index.html
 
             - name: Deploy with Docker Compose (pull image)
               run: |
