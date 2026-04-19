@@ -320,8 +320,7 @@ const CSS = `
 @media(max-width:640px){
   #cw-root{bottom:0;right:0;left:0;}
   .cw-btn-wrap{display:flex;justify-content:center;}
-  .cw-btn{margin-bottom:80px;}
-  .cw-window{width:100%;height:calc(100dvh - 1em);height:calc(100vh - 1em);border-radius:0;position:fixed;bottom:0;left:0;right:0;}
+  .cw-window{width:100%;height:calc(100dvh - 4em);height:calc(100vh - 4em);border-radius:0;position:fixed;bottom:0;left:0;right:0;}
 }
 `;
 

@@ -180,7 +180,7 @@ export default function Chatbot() {
                 animate={{ opacity: isOpen ? 0 : 1, scale: isOpen ? 1 : 1 }}
                 transition={{ duration: 0.3 }}
                 onClick={() => setIsOpen(true)}
-                className="bg-yellow-400 shadow-xl text-black font-medium px-4 py-3 rounded-full flex items-center gap-2 hover:bg-yellow-400 dark:bg-yellow-500 dark:text-black transition delay-150 duration-300 ease-in-out hover:-translate-y-1 hover:scale-110 max-sm:mx-auto max-sm:mb-20"
+                className="bg-yellow-400 shadow-xl text-black font-medium px-4 py-3 rounded-full flex items-center gap-2 hover:bg-yellow-400 dark:bg-yellow-500 dark:text-black transition delay-150 duration-300 ease-in-out hover:-translate-y-1 hover:scale-110 max-sm:mx-auto"
                 style={{ pointerEvents: isOpen ? "none" : "auto" }}
             >
                 <span>Potřebuješ radu? Napiš!</span>
@@ -205,7 +205,7 @@ export default function Chatbot() {
                         style={{ height: "600px" }}
                         ref={(el) => {
                             if (el && window.innerWidth < 640) {
-                                el.style.height = "calc(100vh - 1em)";
+                                el.style.height = "calc(100vh - 4em)";
                             }
                         }}
                     >
