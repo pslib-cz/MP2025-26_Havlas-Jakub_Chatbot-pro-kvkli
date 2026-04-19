@@ -319,7 +319,8 @@ const CSS = `
 .cw-toast{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);background:#22c55e;color:#fff;padding:8px 16px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.15);white-space:nowrap;animation:cw-fadein .3s ease;pointer-events:none;font-size:13px;}
 @media(max-width:640px){
   #cw-root{bottom:0;right:0;left:0;}
-  .cw-btn-wrap{display:flex;justify-content:center;padding-bottom:80px;}
+  .cw-btn-wrap{display:flex;justify-content:center;}
+  .cw-btn{margin-bottom:80px;}
   .cw-window{width:100%;height:100dvh;height:100vh;border-radius:0;position:fixed;inset:0;}
 }
 `;
