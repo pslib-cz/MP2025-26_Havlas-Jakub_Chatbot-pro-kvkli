@@ -321,7 +321,7 @@ const CSS = `
   #cw-root{bottom:0;right:0;left:0;}
   .cw-btn-wrap{display:flex;justify-content:center;}
   .cw-btn{margin-bottom:80px;}
-  .cw-window{width:100%;height:100dvh;height:100vh;border-radius:0;position:fixed;inset:0;}
+  .cw-window{width:100%;height:calc(100dvh - 1em);height:calc(100vh - 1em);border-radius:0;position:fixed;bottom:0;left:0;right:0;}
 }
 `;
 

@@ -201,8 +201,13 @@ export default function Chatbot() {
                         animate={{ x: 0, scale: 1 }}
                         exit={{ x: 400, scale: 1 }}
                         transition={{ duration: 0.3 }}
-                        className="w-120 bg-white rounded-[5px] shadow-0.5xl overflow-hidden flex flex-col absolute bottom-0 right-0 max-sm:w-full max-sm:rounded-none max-sm:h-screen"
+                        className="w-120 bg-white rounded-[5px] shadow-0.5xl overflow-hidden flex flex-col absolute bottom-0 right-0 max-sm:w-full max-sm:rounded-none max-sm:fixed max-sm:bottom-0 max-sm:left-0 max-sm:right-0"
                         style={{ height: "600px" }}
+                        ref={(el) => {
+                            if (el && window.innerWidth < 640) {
+                                el.style.height = "calc(100vh - 1em)";
+                            }
+                        }}
                     >
                         <div className="bg-[#3d4b6e] text-white p-4 flex items-center justify-between">
                             <div className="flex items-center gap-3">
