@@ -500,19 +500,24 @@ function ChatWidget({ backendUrl }: { backendUrl: string }) {
 
     return (
         <>
-            {!windowMounted && (
-                <div className="cw-btn-wrap">
-                    <button className="cw-btn" onClick={handleOpen}>
-                        <span>Potřebuješ radu? Napiš!</span>
-                        <BookIcon  />
-                    </button>
-                </div>
-            )}
+            <div className="cw-btn-wrap">
+                <button
+                    className="cw-btn"
+                    onClick={handleOpen}
+                    style={{
+                        opacity: windowMounted ? 0 : 1,
+                        pointerEvents: windowMounted ? "none" : "auto",
+                        transition: "opacity 0.3s",
+                    }}
+                >
+                    <span>Potřebuješ radu? Napiš!</span>
+                    <BookIcon />
+                </button>
+            </div>
 
             {windowMounted && (
-                <div
-                    className={`cw-window ${isClosing ? "cw-closing" : "cw-opening"}`}
-                >
+                <div className={`cw-window ${isClosing ? "cw-closing" : "cw-opening"}`}>
+
                     <div className="cw-header">
                         <div className="cw-header-left">
                             <div className="cw-header-icon">

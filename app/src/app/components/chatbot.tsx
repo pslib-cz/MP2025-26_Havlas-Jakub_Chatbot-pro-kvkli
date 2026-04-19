@@ -57,7 +57,6 @@ export default function Chatbot() {
     }>({ show: false, messageIndex: null });
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [convoFeedbackSubmitted, setConvoFeedbackSubmitted] = useState(false);
-    const [convoFeedbackMessage, setConvoFeedbackMessage] = useState("");
     const [convoFeedbackLoading, setConvoFeedbackLoading] = useState(false);
 
     // Check cookie on mount
@@ -165,7 +164,6 @@ export default function Chatbot() {
                 variables: {
                     conversationId,
                     userFeedback: isPositive,
-                    userFeedbackMessage: convoFeedbackMessage.trim() || undefined,
                 },
             });
             setConvoFeedbackSubmitted(true);
@@ -252,13 +250,6 @@ export default function Chatbot() {
                                             👎 Nepomohlo
                                         </button>
                                     </div>
-                                    <textarea
-                                        value={convoFeedbackMessage}
-                                        onChange={(e) => setConvoFeedbackMessage(e.target.value)}
-                                        placeholder="Volitelný komentář..."
-                                        className="w-full border border-yellow-300 rounded-lg p-2 text-sm bg-white text-gray-800 resize-none"
-                                        rows={2}
-                                    />
                                 </div>
                             )}
 
