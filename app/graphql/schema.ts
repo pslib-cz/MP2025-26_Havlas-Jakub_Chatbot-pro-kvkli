@@ -92,5 +92,7 @@ export const typeDefs = gql`
   type AddPromptResponse {
     conversationId: Int!
     prompt: Prompt!
+    rateLimited: Boolean!
+    remainingMessages: Int!
   }
 `;

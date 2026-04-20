@@ -40,6 +40,8 @@ const GQL_ADD_PROMPT = `
     addPrompt(promptText: $promptText, conversationId: $conversationId) {
       conversationId
       prompt { promptId promptText answerText userFeedback conversationId }
+      rateLimited
+      remainingMessages
     }
   }`;
 
@@ -71,19 +73,7 @@ const WAITING_MESSAGES = [
     "Už to skoro je",
 ];
 
-const LIMIT_COOKIE_NAME = "chatbot_limited";
-const LIMIT_DURATION_MS = 60 * 60 * 1000;
 
-function setChatbotLimitCookie() {
-    const expires = new Date(Date.now() + LIMIT_DURATION_MS).toUTCString();
-    document.cookie = `${LIMIT_COOKIE_NAME}=true; expires=${expires}; path=/; SameSite=Strict`;
-}
-
-function isChatbotLimited(): boolean {
-    return document.cookie
-        .split(";")
-        .some((c) => c.trim().startsWith(`${LIMIT_COOKIE_NAME}=`));
-}
 
 // ─── Markdown renderer (bold + links + newlines) ──────────────────────────────
 
@@ -382,9 +372,7 @@ function ChatWidget({ backendUrl }: { backendUrl: string }) {
             .catch(() => {});
     }, [gqlUrl]);
 
-    useEffect(() => {
-        if (isChatbotLimited()) setIsLimited(true);
-    }, []);
+
 
     useEffect(() => {
         if (!isLoading) return;
@@ -432,6 +420,10 @@ function ChatWidget({ backendUrl }: { backendUrl: string }) {
             if (data?.addPrompt?.conversationId) {
                 setConversationId(data.addPrompt.conversationId);
             }
+            // Check server-enforced rate limit
+            if (data?.addPrompt?.rateLimited) {
+                setIsLimited(true);
+            }
             setAnswers((p) => [
                 ...p,
                 data?.addPrompt?.prompt?.answerText ?? "",
@@ -448,7 +440,6 @@ function ChatWidget({ backendUrl }: { backendUrl: string }) {
                 );
 
             if (isLimitErr) {
-                setChatbotLimitCookie();
                 setIsLimited(true);
                 setMessages((p) => p.slice(0, -1));
             } else {

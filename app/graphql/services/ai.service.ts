@@ -5,6 +5,11 @@ import {
     ERROR_FALLBACK,
     sanitizeInput,
 } from "./agent";
+import {
+    isInputTooLong,
+    INPUT_TOO_LONG_MESSAGE,
+    validateOutput,
+} from "./agent/preprocessing";
 import { buildSystemPrompt } from "../utils/ai.prompt";
 import LoggerService from "./logger.service";
 import type { ConversationHistoryEntry, GenerateAnswerArgs } from "../../types";
@@ -15,7 +20,7 @@ const runtime = new AgentRuntime(registry);
 
 
 function buildHistory(
-    promptText: string,
+    sanitizedPromptText: string,
     conversationHistory: ConversationHistoryEntry[] = [],
 ): ConversationHistory {
     const history = new ConversationHistory({
@@ -27,7 +32,7 @@ function buildHistory(
         history.addAssistant(answer);
     }
 
-    history.addUser(sanitizeInput(promptText));
+    history.addUser(sanitizedPromptText);
     return history;
 }
 
@@ -37,27 +42,37 @@ export async function generateAnswer(
 ): Promise<string> {
     const { promptText, conversationHistory = [] } = args;
 
+    // ── Input length guard ────────────────────────────────────────────
+    const sanitized = sanitizeInput(promptText);
+    if (isInputTooLong(sanitized)) {
+        LoggerService.warn("Input too long, rejecting", {
+            length: sanitized.length,
+        });
+        return INPUT_TOO_LONG_MESSAGE;
+    }
+
     try {
-        const history = buildHistory(promptText, conversationHistory);
+        const history = buildHistory(sanitized, conversationHistory);
         const result = await runtime.run(history);
 
         if (result.truncated) {
             LoggerService.warn("Agent loop was truncated", {
                 iterations: result.iterations,
-                promptText,
+                promptText: sanitized,
             });
         }
 
         LoggerService.info("generateAnswer", {
-            promptText,
+            promptText: sanitized,
             iterations: result.iterations,
             truncated: result.truncated,
         });
 
-        return result.answer;
+        // ── Output validation ─────────────────────────────────────────
+        return validateOutput(result.answer);
     } catch (error) {
         LoggerService.logError(error as Error, "generateAnswer", {
-            promptText,
+            promptText: sanitized,
         });
         return ERROR_FALLBACK;
     }

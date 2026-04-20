@@ -14,5 +14,7 @@ export type AddPromptData = {
       promptText: string;
       answerText: string;
     };
+    rateLimited: boolean;
+    remainingMessages: number;
   };
 };

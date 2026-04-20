@@ -1,7 +1,10 @@
 import { prismaService } from "../services/prisma.service";
 import { aiService } from "../services/ai.service";
-import { AddPromptArgs, AddPromptFeedbackArgs, PaginatedPromptsArgs, DeletePromptArgs, ConversationHistoryEntry, AddConvoFeedbackArgs } from "../../types";
+import { AddPromptArgs, AddPromptFeedbackArgs, PaginatedPromptsArgs, DeletePromptArgs, ConversationHistoryEntry, AddConvoFeedbackArgs, AuthContext } from "../../types";
 import { withAuth } from "../utils/resolver.utils";
+import { promptRateLimiter } from "../middleware/rateLimiter";
+
+const RATE_LIMITED_MESSAGE = "Dosáhli jste maximálního počtu dotazů. Zkuste to prosím později.";
 
 export const promptResolvers = {
     Query: {
@@ -19,7 +22,29 @@ export const promptResolvers = {
         addPrompt: async (
             _: unknown,
             { promptText, conversationId }: AddPromptArgs,
+            context: AuthContext,
         ) => {
+            // ── Rate limit check ──────────────────────────────────────────
+            const clientIp = context.clientIp ?? "unknown";
+            const rateCheck = promptRateLimiter.check(clientIp);
+
+            if (!rateCheck.allowed) {
+                // Return a polite rate-limited response instead of throwing
+                const placeholderPrompt = await prismaService.addPrompt({
+                    promptText,
+                    answerText: RATE_LIMITED_MESSAGE,
+                    conversationId,
+                });
+
+                return {
+                    conversationId: placeholderPrompt.conversationId,
+                    prompt: placeholderPrompt.prompt,
+                    rateLimited: true,
+                    remainingMessages: 0,
+                };
+            }
+
+            // ── Normal flow ───────────────────────────────────────────────
             let conversationHistory: ConversationHistoryEntry[] = [];
             
             if (conversationId) {
@@ -53,6 +78,8 @@ export const promptResolvers = {
             return {
                 conversationId: newConversationId,
                 prompt,
+                rateLimited: false,
+                remainingMessages: rateCheck.remaining,
             };
         },
 

@@ -2,6 +2,7 @@ import { ApolloServer } from "@apollo/server";
 import { typeDefs } from "../../../../graphql/schema";
 import { resolvers } from "../../../../graphql/resolvers";
 import { validateOrigin, extractTokenFromHeaders } from "../../../../graphql/middleware/originGuard";
+import { extractClientIp } from "../../../../graphql/middleware/rateLimiter";
 
 let serverStarted = false;
 const server = new ApolloServer({
@@ -33,6 +34,9 @@ async function handleGraphQL(req: Request) {
     // Extract auth token
     const token = extractTokenFromHeaders(authorization);
 
+    // Extract client IP for rate limiting
+    const clientIp = extractClientIp(req);
+
     const response = await server.executeOperation(
         {
             query: body.query,
@@ -40,7 +44,7 @@ async function handleGraphQL(req: Request) {
             operationName: body.operationName,
         },
         {
-            contextValue: { token },
+            contextValue: { token, clientIp },
         },
     );
 

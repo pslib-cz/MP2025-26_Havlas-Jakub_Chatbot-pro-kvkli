@@ -31,9 +31,10 @@ export class ConversationHistory {
         this.systemMessage = { role: "system", content: systemPrompt };
     }
 
-    /** Append a user message */
+    /** Append a user message, wrapped in delimiters for injection safety */
     addUser(content: string): void {
-        this.messages.push({ role: "user", content });
+        const wrapped = `<user_message>\n${content}\n</user_message>`;
+        this.messages.push({ role: "user", content: wrapped });
         this.trimIfNeeded();
     }
 

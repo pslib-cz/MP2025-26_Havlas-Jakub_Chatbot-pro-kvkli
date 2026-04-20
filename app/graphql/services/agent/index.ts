@@ -38,6 +38,11 @@ export {
     normalizeForComparison,
     normalizeCount,
     stripAuthorRole,
+    isInputTooLong,
+    validateOutput,
+    MAX_INPUT_LENGTH,
+    INPUT_TOO_LONG_MESSAGE,
+    OUTPUT_FILTERED_MESSAGE,
 } from "./preprocessing";
 
 export {

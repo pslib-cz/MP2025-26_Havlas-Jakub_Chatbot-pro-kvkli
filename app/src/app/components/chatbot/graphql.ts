@@ -11,6 +11,8 @@ export const ADD_PROMPT = gql`
         userFeedback
         conversationId
       }
+      rateLimited
+      remainingMessages
     }
   }
 `;

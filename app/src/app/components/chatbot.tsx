@@ -18,17 +18,7 @@ const HEARTBEAT = gql`
   }
 `;
 
-const LIMIT_COOKIE_NAME = "chatbot_limited";
-const LIMIT_DURATION_MS = 60 * 60 * 1000; 
 
-function setChatbotLimitCookie() {
-    const expires = new Date(Date.now() + LIMIT_DURATION_MS).toUTCString();
-    document.cookie = `${LIMIT_COOKIE_NAME}=true; expires=${expires}; path=/; SameSite=Strict`;
-}
-
-function isChatbotLimited(): boolean {
-    return document.cookie.split(";").some((c) => c.trim().startsWith(`${LIMIT_COOKIE_NAME}=`));
-}
 
 export default function Chatbot() {
     const { data: heartbeatData, loading: heartbeatLoading } = useQuery<{ heartbeat: boolean }>(HEARTBEAT, {
@@ -59,12 +49,7 @@ export default function Chatbot() {
     const [convoFeedbackSubmitted, setConvoFeedbackSubmitted] = useState(false);
     const [convoFeedbackLoading, setConvoFeedbackLoading] = useState(false);
 
-    // Check cookie on mount
-    useEffect(() => {
-        if (isChatbotLimited()) {
-            setIsLimited(true);
-        }
-    }, []);
+
 
     useEffect(() => {
         if (isLoading) {
@@ -106,6 +91,11 @@ export default function Chatbot() {
                 setConversationId(addPromptResponse.addPrompt.conversationId);
             }
 
+            // Check server-enforced rate limit
+            if (addPromptResponse?.addPrompt.rateLimited) {
+                setIsLimited(true);
+            }
+
             setAnswers((prev) => [
                 ...prev,
                 addPromptResponse?.addPrompt.prompt.answerText || "",
@@ -118,7 +108,6 @@ export default function Chatbot() {
                 error?.graphQLErrors?.some((e) => e.message.includes("CONVERSATION_LIMIT_REACHED"));
 
             if (isLimitError) {
-                setChatbotLimitCookie();
                 setIsLimited(true);
                 // Remove the last user message that failed
                 setMessages((prev) => prev.slice(0, -1));
