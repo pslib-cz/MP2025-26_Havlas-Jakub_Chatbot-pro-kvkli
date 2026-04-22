@@ -4,6 +4,7 @@ export type Prompt = {
   promptText: string;
   answerText: string;
   userFeedback: boolean | null;
+  createdAt?: string | null;
   conversation?: {
     userFeedback: boolean | null;
     userFeedbackMessage: string | null;

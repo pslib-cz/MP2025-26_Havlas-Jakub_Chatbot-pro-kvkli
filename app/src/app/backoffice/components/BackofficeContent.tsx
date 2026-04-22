@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "@apollo/client/react";
-import { GET_PAGINATED_PROMPTS, GET_REPORTS, DELETE_PROMPT, PAGE_SIZE } from "../queries";
+import { GET_PAGINATED_PROMPTS, GET_REPORTS, DELETE_PROMPT, DELETE_CONVERSATION, PAGE_SIZE } from "../queries";
 import type { PaginatedPromptsData, ReportsData } from "../../../../types";
 import CrawlPanel from "../crawlButton";
 import ReportsChart from "./ReportsChart";
@@ -26,6 +26,7 @@ export default function BackofficeContent({ token, onLogout }: BackofficeContent
   const { data: reportsData, loading: reportsLoading, refetch: refetchReports } = useQuery<ReportsData>(GET_REPORTS);
 
   const [deletePrompt] = useMutation<{ deletePrompt: number }, { id: number }>(DELETE_PROMPT);
+  const [deleteConversation] = useMutation<{ deleteConversation: number }, { id: number }>(DELETE_CONVERSATION);
 
   const handleDelete = async (promptId: number) => {
     try {
@@ -36,6 +37,18 @@ export default function BackofficeContent({ token, onLogout }: BackofficeContent
     } catch (err) {
       console.error("Error deleting prompt:", err);
       alert(`Failed to delete prompt ${promptId}.`);
+    }
+  };
+
+  const handleDeleteConversation = async (conversationId: number) => {
+    try {
+      await deleteConversation({ variables: { id: conversationId } });
+      alert(`Conversation ${conversationId} deleted successfully.`);
+      refetch();
+      refetchReports();
+    } catch (err) {
+      console.error("Error deleting conversation:", err);
+      alert(`Failed to delete conversation ${conversationId}.`);
     }
   };
 
@@ -65,7 +78,7 @@ export default function BackofficeContent({ token, onLogout }: BackofficeContent
         pageSize={PAGE_SIZE}
         onPageChange={setPage}
       />
-      <PromptsTable prompts={prompts} onDelete={handleDelete} />
+      <PromptsTable prompts={prompts} onDelete={handleDelete} onDeleteConversation={handleDeleteConversation} />
     </div>
   );
 }

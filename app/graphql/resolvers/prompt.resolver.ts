@@ -98,6 +98,10 @@ export const promptResolvers = {
             prismaService.deletePrompt(Number(id))
         ),
 
+        deleteConversation: withAuth(async (_: unknown, { id }: { id: string }) =>
+            prismaService.deleteConversation(Number(id))
+        ),
+
         addConvoFeedback: async (
             _: unknown,
             { conversationId, userFeedbackMessage, userFeedback }: AddConvoFeedbackArgs,

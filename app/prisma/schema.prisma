@@ -14,8 +14,9 @@ model Prompt {
   promptText      String        @db.Text
   answerText      String        @db.Text
   conversationId  Int
-  conversation    Conversation  @relation(fields: [conversationId], references: [conversationId])
+  conversation    Conversation  @relation(fields: [conversationId], references: [conversationId], onDelete: Cascade)
   userFeedback    Boolean?
+  createdAt       DateTime      @default(now())
 }
 
 model Conversation {

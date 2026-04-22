@@ -17,6 +17,7 @@ export const GET_PAGINATED_PROMPTS = gql`
         promptText
         answerText
         userFeedback
+        createdAt
         conversation {
           userFeedback
           userFeedbackMessage
@@ -35,6 +36,7 @@ export const GET_ALL_PROMPTS = gql`
       promptText
       answerText
       userFeedback
+      createdAt
       conversation {
         userFeedback
         userFeedbackMessage
@@ -57,6 +59,12 @@ export const GET_REPORTS = gql`
 export const DELETE_PROMPT = gql`
   mutation DeletePrompt($id: ID!) {
     deletePrompt(id: $id)
+  }
+`;
+
+export const DELETE_CONVERSATION = gql`
+  mutation DeleteConversation($id: ID!) {
+    deleteConversation(id: $id)
   }
 `;
 

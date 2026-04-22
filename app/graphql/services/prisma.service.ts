@@ -122,6 +122,19 @@ export const prismaService = {
             throw error;
         }
     },
+    async deleteConversation(id: number) {
+        try {
+            const result = await prisma.conversation.delete({
+                where: { conversationId: Number(id) },
+            });
+            return result.conversationId;
+        } catch (error) {
+            LoggerService.logError(error as Error, "deleteConversation failed", {
+                service: SERVICE,
+            });
+            throw error;
+        }
+    },
     async CreateConversation() {
         return await prisma.conversation.create({
             data: { length: 0 },

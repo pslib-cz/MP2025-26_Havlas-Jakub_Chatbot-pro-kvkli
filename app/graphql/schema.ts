@@ -16,6 +16,7 @@ export const typeDefs = gql`
     userFeedback: Boolean
     conversationId: Int!
     conversation: Conversation
+    createdAt: String
   }
 
   type CrawlProgress {
@@ -78,6 +79,7 @@ export const typeDefs = gql`
       userFeedback: Boolean
     ): Conversation!
     deletePrompt(id: ID!): Int!
+    deleteConversation(id: ID!): Int!
     crawlWebsite(url: String): CrawlResponse!
     stopCrawl: Boolean!
   }
