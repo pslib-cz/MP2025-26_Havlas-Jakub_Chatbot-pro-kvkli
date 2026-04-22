@@ -30,5 +30,9 @@ COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/widget/widget.js ./public/widget.js
 
+# Copy full node_modules so prisma CLI + all transitive deps are available
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/prisma ./prisma
+
 EXPOSE 3001
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "echo 'Running prisma migrate deploy...' && node ./node_modules/prisma/build/index.js migrate deploy && echo 'Migration done.' && node server.js"]
