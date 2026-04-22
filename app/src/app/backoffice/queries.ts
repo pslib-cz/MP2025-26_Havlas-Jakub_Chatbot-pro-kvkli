@@ -9,8 +9,8 @@ export const LOGIN = gql`
 `;
 
 export const GET_PAGINATED_PROMPTS = gql`
-  query GetPaginatedPrompts($offset: Int!, $limit: Int!) {
-    paginatedPrompts(offset: $offset, limit: $limit) {
+  query GetPaginatedPrompts($offset: Int!, $limit: Int!, $dateFrom: String, $dateTo: String) {
+    paginatedPrompts(offset: $offset, limit: $limit, dateFrom: $dateFrom, dateTo: $dateTo) {
       prompts {
         conversationId
         promptId
@@ -46,8 +46,8 @@ export const GET_ALL_PROMPTS = gql`
 `;
 
 export const GET_REPORTS = gql`
-  query GetReports {
-    reports {
+  query GetReports($dateFrom: String, $dateTo: String) {
+    reports(dateFrom: $dateFrom, dateTo: $dateTo) {
       positive
       negative
       noFeedback

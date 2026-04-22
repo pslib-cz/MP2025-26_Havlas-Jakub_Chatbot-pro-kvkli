@@ -17,13 +17,23 @@ type BackofficeContentProps = {
 
 export default function BackofficeContent({ token, onLogout }: BackofficeContentProps) {
   const [page, setPage] = useState(0);
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
+  const dateVars = {
+    ...(dateFrom ? { dateFrom } : {}),
+    ...(dateTo ? { dateTo } : {}),
+  };
 
   const { loading, error, data, refetch } = useQuery<PaginatedPromptsData>(
     GET_PAGINATED_PROMPTS,
-    { variables: { offset: page * PAGE_SIZE, limit: PAGE_SIZE } }
+    { variables: { offset: page * PAGE_SIZE, limit: PAGE_SIZE, ...dateVars } }
   );
 
-  const { data: reportsData, loading: reportsLoading, refetch: refetchReports } = useQuery<ReportsData>(GET_REPORTS);
+  const { data: reportsData, loading: reportsLoading, refetch: refetchReports } = useQuery<ReportsData>(
+    GET_REPORTS,
+    { variables: dateVars }
+  );
 
   const [deletePrompt] = useMutation<{ deletePrompt: number }, { id: number }>(DELETE_PROMPT);
   const [deleteConversation] = useMutation<{ deleteConversation: number }, { id: number }>(DELETE_CONVERSATION);
@@ -70,6 +80,36 @@ export default function BackofficeContent({ token, onLogout }: BackofficeContent
 
       <CrawlPanel />
       <ExportButton />
+
+      <div className="flex flex-wrap items-end gap-4 mb-6 p-4 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => { setDateFrom(e.target.value); setPage(0); }}
+            className="border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          />
+        </div>
+        <div className="flex flex-col">
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">To</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => { setDateTo(e.target.value); setPage(0); }}
+            className="border border-gray-300 dark:border-gray-600 rounded px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+          />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button
+            onClick={() => { setDateFrom(""); setDateTo(""); setPage(0); }}
+            className="text-sm text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 font-medium px-3 py-1.5"
+          >
+            Clear dates
+          </button>
+        )}
+      </div>
+
       <ReportsChart reportsData={reportsData} loading={reportsLoading} />
       <Pagination
         page={page}

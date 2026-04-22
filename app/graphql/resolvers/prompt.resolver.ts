@@ -9,14 +9,14 @@ const RATE_LIMITED_MESSAGE = "Dosáhli jste maximálního počtu dotazů. Zkuste
 export const promptResolvers = {
     Query: {
         prompts: withAuth(async () => prismaService.findAllPrompts()),
-        paginatedPrompts: withAuth(async (_: unknown, { offset, limit }: PaginatedPromptsArgs) => {
+        paginatedPrompts: withAuth(async (_: unknown, { offset, limit, dateFrom, dateTo }: PaginatedPromptsArgs) => {
             const [prompts, totalCount] = await Promise.all([
-                prismaService.findPaginatedPrompts(offset, limit),
-                prismaService.countPrompts(),
+                prismaService.findPaginatedPrompts(offset, limit, dateFrom, dateTo),
+                prismaService.countPrompts(dateFrom, dateTo),
             ]);
             return { prompts, totalCount };
         }),
-        reports: withAuth(async () => prismaService.getReports()),
+        reports: withAuth(async (_: unknown, { dateFrom, dateTo }: { dateFrom?: string; dateTo?: string }) => prismaService.getReports(dateFrom, dateTo)),
     },
     Mutation: {
         addPrompt: async (

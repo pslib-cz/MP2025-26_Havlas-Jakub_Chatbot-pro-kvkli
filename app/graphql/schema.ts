@@ -58,11 +58,11 @@ export const typeDefs = gql`
     conversations: [Conversation!]!
     conversation(id: ID!): Conversation
     prompts: [Prompt!]!
-    paginatedPrompts(offset: Int!, limit: Int!): PaginatedPrompts!
+    paginatedPrompts(offset: Int!, limit: Int!, dateFrom: String, dateTo: String): PaginatedPrompts!
     crawlProgress: CrawlProgress!
     verifyToken: Boolean!
     heartbeat: Boolean!
-    reports: Reports!
+    reports(dateFrom: String, dateTo: String): Reports!
   }
 
   type Mutation {

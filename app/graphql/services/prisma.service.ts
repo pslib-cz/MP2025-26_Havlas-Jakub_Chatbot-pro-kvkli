@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma";
+import type { Prisma } from "@prisma/client";
 import LoggerService from "./logger.service";
 import { AddPromptFeedbackArgs } from "../../types";
 
@@ -63,9 +64,22 @@ export const prismaService = {
         }
     },
 
-    async findPaginatedPrompts(offset: number, limit: number) {
+    buildDateFilter(dateFrom?: string, dateTo?: string): Prisma.PromptWhereInput {
+        if (!dateFrom && !dateTo) return {};
+        const createdAt: { gte?: Date; lte?: Date } = {};
+        if (dateFrom) createdAt.gte = new Date(dateFrom);
+        if (dateTo) {
+            const end = new Date(dateTo);
+            end.setHours(23, 59, 59, 999);
+            createdAt.lte = end;
+        }
+        return { createdAt } as Prisma.PromptWhereInput;
+    },
+
+    async findPaginatedPrompts(offset: number, limit: number, dateFrom?: string, dateTo?: string) {
         try {
             const result = await prisma.prompt.findMany({
+                where: this.buildDateFilter(dateFrom, dateTo),
                 orderBy: { promptId: "desc" },
                 skip: offset,
                 take: limit,
@@ -82,9 +96,9 @@ export const prismaService = {
         }
     },
 
-    async countPrompts() {
+    async countPrompts(dateFrom?: string, dateTo?: string) {
         try {
-            const result = await prisma.prompt.count();
+            const result = await prisma.prompt.count({ where: this.buildDateFilter(dateFrom, dateTo) });
             return result;
         } catch (error) {
             LoggerService.logError(error as Error, "countPrompts failed", {
@@ -205,12 +219,13 @@ export const prismaService = {
         }
     },
 
-    async getReports() {
+    async getReports(dateFrom?: string, dateTo?: string) {
         try {
+            const dateFilter = this.buildDateFilter(dateFrom, dateTo);
             const [positive, negative, total] = await Promise.all([
-                prisma.prompt.count({ where: { userFeedback: true } }),
-                prisma.prompt.count({ where: { userFeedback: false } }),
-                prisma.prompt.count(),
+                prisma.prompt.count({ where: { ...dateFilter, userFeedback: true } }),
+                prisma.prompt.count({ where: { ...dateFilter, userFeedback: false } }),
+                prisma.prompt.count({ where: { ...dateFilter } }),
             ]);
 
             const noFeedback = total - positive - negative;
