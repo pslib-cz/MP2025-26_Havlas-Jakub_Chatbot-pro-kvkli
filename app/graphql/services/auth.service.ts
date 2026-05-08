@@ -2,7 +2,15 @@ import jwt from "jsonwebtoken";
 import LoggerService from "./logger.service";
 
 const SERVICE = "auth";
-const JWT_SECRET = process.env.JWT_SECRET || "fallback-secret-change-me";
+
+function getJwtSecret(): string {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+        throw new Error("FATAL: JWT_SECRET environment variable is not set");
+    }
+    return secret;
+}
+
 const TOKEN_EXPIRY = "8h";
 
 export const authService = {
@@ -17,7 +25,7 @@ export const authService = {
             LoggerService.info(`Login successful for user="${username}"`, {
                 service: SERVICE,
             });
-            return jwt.sign({ username, role: "admin" }, JWT_SECRET, {
+            return jwt.sign({ username, role: "admin" }, getJwtSecret(), {
                 expiresIn: TOKEN_EXPIRY,
             });
         }
@@ -29,7 +37,7 @@ export const authService = {
 
     verifyToken(token: string): { username: string; role: string } | null {
         try {
-            const decoded = jwt.verify(token, JWT_SECRET) as {
+            const decoded = jwt.verify(token, getJwtSecret()) as {
                 username: string;
                 role: string;
             };

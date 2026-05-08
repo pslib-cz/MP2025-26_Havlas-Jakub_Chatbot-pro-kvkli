@@ -8,10 +8,11 @@ import { flattenPagesToChunks, diffChunks } from "../services/compare.service";
 import { fetchExistingChunks, updateVectorDB } from "../services/site.service";
 import { LoggerService } from "../services/logger.service";
 import { CrawlWebsiteArgs, CrawlProgress, CrawlResult } from "../../types";
+import { withAuth } from "../utils/resolver.utils";
 
 export const crawlResolvers = {
     Query: {
-        crawlProgress: async (): Promise<CrawlProgress> => {
+        crawlProgress: withAuth(async (): Promise<CrawlProgress> => {
             const defaultProgress: CrawlProgress = {
                 status: "idle",
                 phase: "idle",
@@ -61,15 +62,15 @@ export const crawlResolvers = {
                 console.error("Error in crawlProgress resolver:", error);
                 return defaultProgress;
             }
-        },
+        }),
     },
 
     Mutation: {
-        stopCrawl: async () => {
+        stopCrawl: withAuth(async () => {
             return stopCrawl();
-        },
+        }),
 
-        crawlWebsite: async (_: unknown, { url }: CrawlWebsiteArgs): Promise<CrawlResult> => {
+        crawlWebsite: withAuth(async (_: unknown, { url }: CrawlWebsiteArgs): Promise<CrawlResult> => {
             LoggerService.info("🕷️ Starting crawl pipeline", {
                 url: url || "https://www.kvkli.cz",
             });
@@ -185,6 +186,6 @@ export const crawlResolvers = {
                 pagesCount: 0,
                 outputFile: "",
             };
-        },
+        }),
     },
 };

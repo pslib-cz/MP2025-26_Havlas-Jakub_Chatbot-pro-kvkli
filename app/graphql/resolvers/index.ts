@@ -16,4 +16,11 @@ export const resolvers = {
     ...promptResolvers.Mutation,
     ...authResolvers.Mutation,
   },
+  // Field resolver: Prisma returns Date objects, GraphQL schema expects String
+  Prompt: {
+    createdAt: (parent: { createdAt?: Date | string | null }) =>
+      parent.createdAt instanceof Date
+        ? parent.createdAt.toISOString()
+        : parent.createdAt ?? null,
+  },
 };

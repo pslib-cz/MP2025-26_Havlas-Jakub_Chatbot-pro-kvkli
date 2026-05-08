@@ -3,10 +3,42 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
  reactStrictMode: true,
  output: "standalone",
+
+ // Trust the reverse proxy (Apache) forwarded headers
+ serverExternalPackages: ["pino", "pino-pretty"],
  
  // Set workspace root to silence lockfile warning
  outputFileTracingRoot: process.cwd(),
- 
+
+ // Expose /graphql as public alias for /api/graphql
+ async rewrites() {
+   return [
+     {
+       source: "/graphql",
+       destination: "/api/graphql",
+     },
+   ];
+ },
+
+ // Security & caching headers for all routes
+ async headers() {
+   return [
+     {
+       source: "/(.*)",
+       headers: [
+         { key: "X-Content-Type-Options", value: "nosniff" },
+         { key: "X-Frame-Options", value: "DENY" },
+         { key: "X-XSS-Protection", value: "1; mode=block" },
+         { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+         { key: "X-Robots-Tag", value: "noindex, nofollow, noarchive" },
+         { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+       ],
+     },
+   ];
+ },
+
+ poweredByHeader: false,
+
  // Exclude large files from serverless functions
  outputFileTracingExcludes: {
    '*': [

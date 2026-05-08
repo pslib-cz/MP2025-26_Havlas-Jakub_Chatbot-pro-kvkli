@@ -4,10 +4,18 @@ import { resolvers } from "../../../../graphql/resolvers";
 import { validateOrigin, extractTokenFromHeaders } from "../../../../graphql/middleware/originGuard";
 import { extractClientIp } from "../../../../graphql/middleware/rateLimiter";
 
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:3000")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+
 let serverStarted = false;
 const server = new ApolloServer({
     typeDefs,
     resolvers,
+    introspection: !IS_PRODUCTION,
 });
 
 async function ensureStarted() {
@@ -15,6 +23,25 @@ async function ensureStarted() {
         await server.start();
         serverStarted = true;
     }
+}
+
+/**
+ * Build CORS headers using the validated origin.
+ * Only reflects origins that are in the ALLOWED_ORIGINS list.
+ */
+function corsHeaders(origin: string | null): Record<string, string> {
+    const normalizedOrigin = origin?.replace(/\/+$/, "") ?? "";
+    const isAllowed = ALLOWED_ORIGINS.some((ao) => {
+        const normalized = ao.replace(/\/+$/, "");
+        return normalizedOrigin === normalized;
+    });
+
+    return {
+        "Access-Control-Allow-Origin": isAllowed ? origin! : ALLOWED_ORIGINS[0],
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "X-Content-Type-Options": "nosniff",
+    };
 }
 
 async function handleGraphQL(req: Request) {
@@ -55,9 +82,7 @@ async function handleGraphQL(req: Request) {
             status: 200,
             headers: {
                 "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": origin || "*",
-                "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                ...corsHeaders(origin),
             },
         });
     }
@@ -72,17 +97,25 @@ export async function POST(req: Request) {
     return handleGraphQL(req);
 }
 
-export async function GET(req: Request) {
-    return handleGraphQL(req);
+// GET disabled in production — GraphQL should only accept POST
+export async function GET() {
+    if (IS_PRODUCTION) {
+        return new Response(JSON.stringify({ errors: [{ message: "Method not allowed" }] }), {
+            status: 405,
+            headers: { "Content-Type": "application/json", "Allow": "POST, OPTIONS" },
+        });
+    }
+    // In development, allow GET for Apollo Sandbox
+    return new Response(JSON.stringify({ message: "Use POST for GraphQL queries" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+    });
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(req: Request) {
+    const origin = req.headers.get("origin");
     return new Response(null, {
         status: 204,
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
+        headers: corsHeaders(origin),
     });
 }

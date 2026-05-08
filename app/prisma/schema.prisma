@@ -24,4 +24,5 @@ model Conversation {
   prompts                 Prompt[]
   length                  Int
   userFeedback            Boolean?
+  userFeedbackMessage     String?
 }

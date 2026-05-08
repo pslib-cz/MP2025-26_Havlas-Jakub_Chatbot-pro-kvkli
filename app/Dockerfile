@@ -21,8 +21,17 @@ RUN npm run build:widget
 # runner
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
+
 ENV NODE_ENV=production
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl curl && rm -rf /var/lib/apt/lists/*
+
+# Non-root user for security
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
 # Copy only what Next.js needs
 COPY --from=builder /app/.next/standalone ./
@@ -34,5 +43,10 @@ COPY --from=builder /app/widget/widget.js ./public/widget.js
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 
-EXPOSE 3001
+# Create logs dir and set ownership
+RUN mkdir -p /app/logs && chown -R nextjs:nodejs /app/logs
+
+USER nextjs
+
+EXPOSE 3000
 CMD ["sh", "-c", "echo 'Running prisma migrate deploy...' && node ./node_modules/prisma/build/index.js migrate deploy && echo 'Migration done.' && node server.js"]

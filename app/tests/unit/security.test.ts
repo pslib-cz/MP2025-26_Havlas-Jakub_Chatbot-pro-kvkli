@@ -88,7 +88,7 @@ describe("validateOutput", () => {
     });
 
     it("allows plain code backticks (inline)", () => {
-        const answer = "Můžete použít `opac.kvkli.cz` pro vyhledávání.";
+        const answer = "Můžete použít `ipac.kvkli.cz` pro vyhledávání.";
         expect(validateOutput(answer)).toBe(answer);
     });
 

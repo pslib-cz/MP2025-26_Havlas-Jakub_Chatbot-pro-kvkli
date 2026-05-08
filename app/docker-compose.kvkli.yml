@@ -1,0 +1,113 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Production Docker Compose — chatbot.kvkli.cz
+# Deploy to: /var/www/apollo/
+# Usage:  docker compose -f docker-compose.kvkli.yml up -d
+# Logs:   docker compose -f docker-compose.kvkli.yml logs -f app
+# ══════════════════════════════════════════════════════════════════════════════
+
+services:
+    # ── Next.js Application ──────────────────────────────────────────────
+    app:
+        container_name: kvkli-chatbot
+        image: ghcr.io/pslib-cz/kvkli-app:latest
+        restart: unless-stopped
+        env_file:
+            - .env
+        environment:
+            NODE_ENV: production
+            NEXT_TELEMETRY_DISABLED: "1"
+            PORT: "3000"
+            HOSTNAME: "0.0.0.0"
+            DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+            CHROMA_URL: http://chromadb:8000
+            ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+        ports:
+            # Bind to localhost ONLY — Apache reverse proxy connects here
+            - "127.0.0.1:3000:3000"
+        volumes:
+            - app_logs:/app/logs
+        depends_on:
+            chromadb:
+                condition: service_healthy
+            db:
+                condition: service_healthy
+        healthcheck:
+            test: ["CMD-SHELL", "curl -sf http://localhost:3000/api/graphql -X POST -H 'Content-Type: application/json' -d '{\"query\":\"{heartbeat}\"}' || exit 1"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
+        deploy:
+            resources:
+                limits:
+                    memory: 1G
+                reservations:
+                    memory: 512M
+        networks:
+            - kvkli-internal
+
+    # ── PostgreSQL ────────────────────────────────────────────────────────
+    db:
+        container_name: kvkli-postgres
+        image: postgres:16-bookworm
+        restart: unless-stopped
+        env_file:
+            - .env
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+            POSTGRES_DB: ${POSTGRES_DB}
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+            interval: 10s
+            timeout: 5s
+            retries: 5
+            start_period: 10s
+        deploy:
+            resources:
+                limits:
+                    memory: 512M
+        networks:
+            - kvkli-internal
+        # No ports exposed — only reachable by app via internal network
+
+    # ── ChromaDB ─────────────────────────────────────────────────────────
+    chromadb:
+        container_name: kvkli-chromadb
+        image: chromadb/chroma:latest
+        restart: unless-stopped
+        volumes:
+            - chroma_data:/data
+        environment:
+            IS_PERSISTENT: "TRUE"
+            ANONYMIZED_TELEMETRY: "False"
+        healthcheck:
+            test: ["CMD-SHELL", "timeout 2 bash -c 'cat < /dev/null > /dev/tcp/localhost/8000' || exit 1"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+            start_period: 30s
+        deploy:
+            resources:
+                limits:
+                    memory: 512M
+        networks:
+            - kvkli-internal
+        # No ports exposed — only reachable by app via internal network
+
+# ── Networks ──────────────────────────────────────────────────────────────────
+networks:
+    kvkli-internal:
+        driver: bridge
+        # Internal bridge — no external access, containers talk to each other
+
+# ── Volumes ───────────────────────────────────────────────────────────────────
+volumes:
+    postgres_data:
+        driver: local
+    chroma_data:
+        driver: local
+    app_logs:
+        driver: local

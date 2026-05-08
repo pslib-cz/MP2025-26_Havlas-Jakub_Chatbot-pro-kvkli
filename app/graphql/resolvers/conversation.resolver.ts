@@ -1,22 +1,21 @@
 import { prismaService } from "../services/prisma.service";
 import { AddConvoFeedbackArgs, FindConversationArgs } from "../../types";
 import { GraphQLError } from "graphql";
-
+import { withAuth } from "../utils/resolver.utils";
 
 
 
 export const conversationResolvers = {
     Query: {
-        conversations: async (_: unknown, __: unknown, context: any) => {
+        conversations: withAuth(async () => {
             return prismaService.findAllConversations();
-        },
-        conversation: async (
+        }),
+        conversation: withAuth(async (
             _: unknown,
             { id }: FindConversationArgs,
-            context: any,
         ) => {
             return prismaService.findConversationById(id);
-        },
+        }),
     },
     Mutation: {
         addConvoFeedback: async (
