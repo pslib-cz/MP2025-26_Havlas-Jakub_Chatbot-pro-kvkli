@@ -1,0 +1,17 @@
+{
+    "name": "kvkli-chatbot",
+    "version": "0.1.0",
+    "private": true,
+    "scripts": {
+        "dev": "cd app && docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db chromadb && npm run dev",
+        "dev:app": "cd app && npm run dev",
+        "dev:docker": "cd app && docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d db chromadb",
+        "dev:docker:stop": "cd app && docker compose -f docker-compose.yml -f docker-compose.dev.yml down",
+        "build:widget": "cd widget && npm run build",
+        "install:all": "cd app && npm install && cd ../widget && npm install",
+        "test": "cd app && npm test",
+        "test:unit": "cd app && npm run test:unit",
+        "test:smoke": "cd app && npm run test:smoke",
+        "lint": "cd app && npm run lint"
+    }
+}

@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ApolloClient } from "@apollo/client";
 import { ApolloProvider } from "@apollo/client/react";
 import { createAuthClient } from "./utils/authClient";
-import LoginForm from "./components/LoginForm";
 import BackofficeContent from "./components/BackofficeContent";
 
-export default function PromptsPage() {
+export default function BackofficePage() {
+  const router = useRouter();
   const [token, setToken] = useState<string | null>(null);
   const [authClient, setAuthClient] = useState<InstanceType<typeof ApolloClient> | null>(null);
 
@@ -16,24 +17,19 @@ export default function PromptsPage() {
     if (stored) {
       setToken(stored);
       setAuthClient(createAuthClient(stored));
+    } else {
+      router.replace("/");
     }
-  }, []);
-
-  const handleLogin = (t: string) => {
-    sessionStorage.setItem("backoffice_token", t);
-    setToken(t);
-    setAuthClient(createAuthClient(t));
-  };
+  }, [router]);
 
   const handleLogout = () => {
     sessionStorage.removeItem("backoffice_token");
     setToken(null);
     setAuthClient(null);
+    router.replace("/");
   };
 
-  if (!token || !authClient) {
-    return <LoginForm onLogin={handleLogin} />;
-  }
+  if (!token || !authClient) return null;
 
   return (
     <ApolloProvider client={authClient}>

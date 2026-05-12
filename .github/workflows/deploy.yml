@@ -5,6 +5,7 @@ on:
         branches: [main]
         paths:
             - "app/**"
+            - "widget/**"
             - ".github/workflows/deploy.yml"
 
 jobs:
@@ -70,7 +71,7 @@ jobs:
                   scp app/docker-compose.prod.vps.yml ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/apollo/docker-compose.prod.vps.yml
 
             - name: Build widget bundle
-              working-directory: ./app
+              working-directory: ./widget
               run: |
                   npm ci
                   node build-widget.mjs
@@ -78,8 +79,8 @@ jobs:
             - name: Publish widget to VPS
               run: |
                   ssh ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} "mkdir -p /var/www/widget && rm -f /var/www/widget/widget.js"
-                  scp app/widget/widget.js ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/widget.js
-                  scp app/widget/widget-test.html ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/index.html
+                  scp widget/widget.js ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/widget.js
+                  scp widget/widget-test.html ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/var/www/widget/index.html
 
             - name: Deploy with Docker Compose (pull image)
               run: |
