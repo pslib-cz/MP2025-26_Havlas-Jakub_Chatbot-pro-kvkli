@@ -9,17 +9,20 @@ export default function Home() {
     const [checked, setChecked] = useState(false);
 
     useEffect(() => {
-        if (sessionStorage.getItem("backoffice_token")) {
-            router.replace("/backoffice");
-        } else {
-            setChecked(true);
-        }
+        fetch("/api/auth/verify")
+            .then((res) => {
+                if (res.ok) {
+                    router.replace("/backoffice");
+                } else {
+                    setChecked(true);
+                }
+            })
+            .catch(() => setChecked(true));
     }, [router]);
 
     if (!checked) return null;
 
-    const handleLogin = (token: string) => {
-        sessionStorage.setItem("backoffice_token", token);
+    const handleLogin = () => {
         router.push("/backoffice");
     };
 

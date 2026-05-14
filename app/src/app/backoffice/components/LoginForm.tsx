@@ -1,11 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ApolloClient, InMemoryCache, createHttpLink } from "@apollo/client";
-import { LOGIN } from "../queries";
 
 type LoginFormProps = {
-  onLogin: (token: string) => void;
+  onLogin: () => void;
 };
 
 export default function LoginForm({ onLogin }: LoginFormProps) {
@@ -20,22 +18,19 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
     setAuthError("");
 
     try {
-      const httpLink = createHttpLink({ uri: "/api/graphql" });
-      const tempClient = new ApolloClient({
-        link: httpLink,
-        cache: new InMemoryCache(),
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
       });
 
-      const { data } = await tempClient.mutate<{ login: { token: string } }>({
-        mutation: LOGIN,
-        variables: { username, password },
-      });
-
-      if (data?.login.token) {
-        onLogin(data.login.token);
+      if (res.ok) {
+        onLogin();
+      } else {
+        setAuthError("Invalid username or password.");
       }
     } catch {
-      setAuthError("Invalid username or password.");
+      setAuthError("Login failed. Please try again.");
     } finally {
       setLoginLoading(false);
     }

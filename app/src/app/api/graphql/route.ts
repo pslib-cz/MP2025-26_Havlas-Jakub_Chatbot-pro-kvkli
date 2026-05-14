@@ -44,12 +44,19 @@ function corsHeaders(origin: string | null): Record<string, string> {
     };
 }
 
+function extractTokenFromCookie(cookieHeader: string | null): string | undefined {
+    if (!cookieHeader) return undefined;
+    const match = cookieHeader.match(/backoffice_token=([^;]+)/);
+    return match?.[1] || undefined;
+}
+
 async function handleGraphQL(req: Request) {
     await ensureStarted();
 
     const origin = req.headers.get("origin");
     const referer = req.headers.get("referer");
     const authorization = req.headers.get("authorization");
+    const cookie = req.headers.get("cookie");
 
     // Parse body
     const body = await req.json();
@@ -58,8 +65,8 @@ async function handleGraphQL(req: Request) {
     // Validate origin
     validateOrigin(origin, referer, operationName);
 
-    // Extract auth token
-    const token = extractTokenFromHeaders(authorization);
+    // Extract auth token (prefer Authorization header, fall back to httpOnly cookie)
+    const token = extractTokenFromHeaders(authorization) ?? extractTokenFromCookie(cookie);
 
     // Extract client IP for rate limiting
     const clientIp = extractClientIp(req);

@@ -11,11 +11,10 @@ import PromptsTable from "./PromptsTable";
 import ExportButton from "./ExportButton";
 
 type BackofficeContentProps = {
-  token: string;
   onLogout: () => void;
 };
 
-export default function BackofficeContent({ token, onLogout }: BackofficeContentProps) {
+export default function BackofficeContent({ onLogout }: BackofficeContentProps) {
   const [page, setPage] = useState(0);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");

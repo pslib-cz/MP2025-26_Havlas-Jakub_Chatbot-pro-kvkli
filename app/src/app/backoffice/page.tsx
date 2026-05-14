@@ -2,38 +2,49 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ApolloClient } from "@apollo/client";
+import { ApolloClient, InMemoryCache, createHttpLink } from "@apollo/client";
 import { ApolloProvider } from "@apollo/client/react";
-import { createAuthClient } from "./utils/authClient";
 import BackofficeContent from "./components/BackofficeContent";
+
+function createCookieClient() {
+  const httpLink = createHttpLink({
+    uri: "/api/graphql",
+    credentials: "same-origin",
+  });
+  return new ApolloClient({
+    link: httpLink,
+    cache: new InMemoryCache(),
+  });
+}
 
 export default function BackofficePage() {
   const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
-  const [authClient, setAuthClient] = useState<InstanceType<typeof ApolloClient> | null>(null);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [client] = useState(() => createCookieClient());
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("backoffice_token");
-    if (stored) {
-      setToken(stored);
-      setAuthClient(createAuthClient(stored));
-    } else {
-      router.replace("/");
-    }
+    fetch("/api/auth/verify")
+      .then((res) => {
+        if (res.ok) {
+          setAuthenticated(true);
+        } else {
+          router.replace("/");
+        }
+      })
+      .catch(() => router.replace("/"));
   }, [router]);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem("backoffice_token");
-    setToken(null);
-    setAuthClient(null);
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setAuthenticated(false);
     router.replace("/");
   };
 
-  if (!token || !authClient) return null;
+  if (!authenticated) return null;
 
   return (
-    <ApolloProvider client={authClient}>
-      <BackofficeContent token={token} onLogout={handleLogout} />
+    <ApolloProvider client={client}>
+      <BackofficeContent onLogout={handleLogout} />
     </ApolloProvider>
   );
 }
