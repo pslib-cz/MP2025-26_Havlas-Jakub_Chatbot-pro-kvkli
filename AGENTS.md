@@ -1,112 +1,94 @@
-# Project Guidelines
+# AGENTS.md — kvkli Chatbot
 
-AI chatbot for the Krajská vědecká knihovna v Liberci (KVKLI) — a Czech regional library. The system answers user questions about library services, books, events, and contacts using OpenAI with tool-calling against a vector database of library catalog records.
+AI-powered chatbot for the Czech library KVKLI (Krajská vědecká knihovna v Liberci). Next.js 15 fullstack app with GraphQL API, OpenAI agentic loop, ChromaDB vector search, PostgreSQL via Prisma, and an embeddable React widget.
 
-## Repository Structure
+## Quick Commands
 
-| Directory | Tech | Purpose |
-|-----------|------|---------|
-| `app/` | Next.js 15 + TypeScript | Backend (GraphQL API, backoffice admin UI) |
-| `widget/` | React 19 + esbuild | Embeddable chat widget (single-file IIFE bundle) |
-| `harvester/` | C# / .NET | OAI-PMH harvester that crawls IPAC catalog → `complete_records.csv` |
-| `model/` | Python | Cleans CSV data, generates OpenAI embeddings, populates ChromaDB |
+```bash
+# Development (starts Docker containers + Next.js dev server)
+npm run dev              # from repo root
+
+# Individual
+npm run dev:docker       # PostgreSQL + ChromaDB only
+npm run dev:app          # Next.js only (port 3000)
+
+# Testing
+npm run test             # all tests
+npm run test:unit        # unit tests only
+npm run test:smoke       # smoke tests only
+
+# Build
+npm run build:widget     # build embeddable widget (esbuild)
+cd app && npm run build  # production Next.js build
+
+# Linting
+npm run lint
+```
 
 ## Architecture
 
 ```
-Widget (IIFE bundle) ──→ /api/graphql ──→ Apollo Server ──→ Resolvers ──→ Services
-                                                                            │
-                                                           ┌────────────────┼────────────────┐
-                                                           │                │                │
-                                                      AgentRuntime     Prisma (PG)     ChromaDB
-                                                      (gpt-4o loop)                   (vectors)
+repo root/
+├── app/                    # Next.js 15 fullstack (App Router)
+│   ├── src/app/            # Pages & API routes (backoffice dashboard)
+│   ├── graphql/
+│   │   ├── schema.ts       # GraphQL type definitions
+│   │   ├── resolvers/      # Query/Mutation resolvers (prompt, conversation, crawl, auth)
+│   │   ├── services/       # Business logic layer
+│   │   │   ├── agent/      # ★ AI Agent Runtime (agentic loop with tool calling)
+│   │   │   │   ├── AgentRuntime.ts
+│   │   │   │   ├── OpenAIClient.ts
+│   │   │   │   ├── ToolRegistry.ts
+│   │   │   │   └── tools/  # 8 tools: searchCatalog, recommendBooks, findBookByPlot,
+│   │   │   │               #   getOpeningHours, getOfficeInfo, getContact, getEvents, searchWebsite
+│   │   │   ├── ai.service.ts
+│   │   │   ├── book.service.ts
+│   │   │   ├── crawl.service.ts
+│   │   │   └── prisma.service.ts
+│   │   ├── middleware/      # originGuard (CORS/JWT), rateLimiter
+│   │   └── utils/
+│   ├── lib/                # Singleton clients: prisma, chroma, openAI, apolloClient
+│   ├── prisma/             # schema.prisma + migrations (PostgreSQL)
+│   ├── types/              # All TypeScript types (one file per type, re-exported via index.ts)
+│   └── tests/              # unit/, integration/, smoke/
+├── widget/                 # Embeddable React chat widget (standalone JS bundle)
+└── deploy.md               # Production deployment guide
 ```
 
-- **AgentRuntime** (`app/graphql/services/agent/AgentRuntime.ts`): Iterative tool-calling loop (max 10 iterations). Tools are registered in `app/graphql/services/agent/tools/registry.ts`.
-- **8 tools**: `searchCatalog`, `recommendBooks`, `findBookByPlot`, `getOpeningHours`, `getOfficeInfo`, `getContact`, `getEvents`, `searchWebsite`
-- **Prisma models**: `Prompt` and `Conversation` — see `app/prisma/schema.prisma`
-- **GraphQL schema**: `app/graphql/schema.ts` — resolvers use `withAuth()` HOF from `app/graphql/utils/resolver.utils.ts`
-- **Middleware**: Origin guard (`ALLOWED_ORIGINS` env) + per-IP rate limiter (20 req/hour)
+## Key Conventions
 
-## Build & Test
+- **TypeScript strict** — all code is TypeScript. Types live in `app/types/`, one file per type, all re-exported from `app/types/index.ts`.
+- **GraphQL API** at `/api/graphql` (Apollo Server 5). Schema defined in `app/graphql/schema.ts`. Resolvers organized by domain.
+- **Prisma** — schema at `app/prisma/schema.prisma`, client generated to `app/generated/prisma/`. Migrations auto-run on Docker startup. Singleton client in `app/lib/prisma.ts`.
+- **Agent Runtime** — agentic loop in `app/graphql/services/agent/`. Tools have three files: `specs.ts` (OpenAI JSON Schema), `schemas.ts` (Zod validation), handlers (`bookHandlers.ts`, `infoHandlers.ts`). New tools must be registered in `tools/registry.ts`.
+- **ChromaDB** — vector store for website content (RAG). Client in `app/lib/chroma.ts`. Data persisted in `app/chroma_db/`.
+- **Testing** — Jest with ts-jest. Tests in `app/tests/{unit,integration,smoke}/`. Coverage targets `graphql/**/*.ts` and `lib/**/*.ts`.
+- **Widget** — standalone React bundle built with esbuild (`widget/build-widget.mjs`). Embedded on `kvkli.cz` via `<script>` tag.
 
-Root-level orchestration scripts (run from repo root):
+## Deployment
 
-```bash
-npm run install:all   # Install deps for both app/ and widget/
-npm run dev           # Start Docker (PG + Chroma) + Next.js dev server
-npm run dev:app       # Next.js dev server only (assumes Docker running)
-npm run dev:docker    # Start only Docker services (PG + ChromaDB)
-npm run build:widget  # Bundle widget → widget/widget.js
-npm test              # Jest tests (app)
-npm run test:unit     # Unit tests only
-npm run test:smoke    # Smoke tests only
-```
-
-App-specific commands (run from `app/`):
-
-```bash
-npm run dev          # Next.js dev server (port 3000)
-npm run build        # Production build (standalone output)
-npm test             # Jest (ts-jest, jsdom env)
-```
-
-Widget commands (run from `widget/`):
-
-```bash
-npm run build        # Bundle via esbuild → widget.js
-```
-
-Root-level Jest config exists for `tests/services/` (run from repo root with `npx jest`).
-
-### Docker
-
-```bash
-docker-compose up    # Starts: PostgreSQL 16, ChromaDB, App
-```
-
-Dockerfile is multi-stage: deps → build (prisma generate + next build) → runner (non-root `nextjs` user). Prisma migrations auto-deploy on container start.
-
-## Conventions
-
-- **Path alias**: `@/*` maps to `app/src/*` (tsconfig)
-- **Types**: All shared types in `app/types/`, barrel-exported via `app/types/index.ts`
-- **Services pattern**: Business logic in `app/graphql/services/`, resolvers are thin wrappers
-- **Auth**: JWT HS256, 8-hour expiry. Protected resolvers use `withAuth(resolver)` or `requireAuth(context)`
-- **Input validation**: `sanitizeInput()` and `isInputTooLong()` (8000 char limit) in AI service
-- **Output validation**: `validateOutput()` filters harmful AI responses
-- **Lib singletons**: `app/lib/prisma.ts`, `app/lib/chroma.ts`, `app/lib/openAI.ts` — all lazy-initialized singletons
-- **Logging**: Structured logging via pino (`app/graphql/services/logger.service.ts`)
-- **Widget**: Self-contained React IIFE in `widget/index.tsx`; built with esbuild; backend URL set via `window.CHATBOT_BACKEND_URL` or `data-backend` attribute
+- **Branch strategy**: `main` (dev) → PR → `production` (triggers CI/CD)
+- **CI/CD**: GitHub Actions builds Docker image → pushes to GHCR → deploys to VPS via SSH
+- **Production stack**: Docker Compose (`docker-compose.kvkli.yml`) with PostgreSQL 16, ChromaDB, Next.js on internal bridge network. Apache reverse proxy with SSL.
+- **Details**: See [deploy.md](deploy.md) and [app/DEPLOYMENT_CHECKLIST.md](app/DEPLOYMENT_CHECKLIST.md)
 
 ## Environment Variables
 
-Key variables (see `docker-compose.yml` for full list):
+Required in `.env` (see deployment docs for production values):
 
-- `DATABASE_URL` — PostgreSQL connection string
-- `CHROMA_URL` — ChromaDB endpoint (default `http://localhost:8000`)
-- `OPENAI_API_KEY` — OpenAI API key
-- `JWT_SECRET` — JWT signing secret
-- `ALLOWED_ORIGINS` — Comma-separated CORS origins
-- `BOOK_UPDATE_SCHEDULE` — Cron expression for weekly book updates (default `0 2 * * 0`)
+| Variable                            | Purpose                                             |
+| ----------------------------------- | --------------------------------------------------- |
+| `DATABASE_URL`                      | PostgreSQL connection string                        |
+| `OPENAI_API_KEY`                    | OpenAI API key                                      |
+| `CHROMA_URL`                        | ChromaDB endpoint (default `http://localhost:8000`) |
+| `JWT_SECRET`                        | JWT signing secret                                  |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD` | Backoffice login                                    |
+| `ALLOWED_ORIGINS`                   | Comma-separated CORS origins                        |
+| `LOG_LEVEL`                         | Pino log level (default `info`)                     |
 
-## Testing
+## Pitfalls
 
-- Unit tests: `app/tests/unit/` (13 files covering resolvers, auth, rate limiter, origin guard, preprocessing, crawl)
-- Integration/smoke tests: `app/tests/integration/`, `app/tests/smoke/`
-- Test setup mocks env vars and polyfills `structuredClone` — see `tests/setup.ts`
-- App-level jest config: `app/jest.config.js` (coverage: `graphql/**`, `lib/**`)
-
-## CI/CD
-
-GitHub Actions workflow (`.github/workflows/deploy.yml`):
-- Triggers on push to `main` when `app/**`, `widget/**`, or the workflow itself changes
-- Runs unit + smoke tests → builds Docker image → pushes to GHCR → deploys to VPS
-- Widget is built separately and SCP'd to `/var/www/widget/` on the VPS
-
-## Known Design Decisions
-
-- AI tool coordination: The system favors code-level safeguards over prompt-only instructions for multi-step tool flows — see [fix-prompt.md](fix-prompt.md)
-- Conversation context: Last 5 prompts are included in AI context window
-- Info tools (hours, contacts, events) do live scraping rather than cached data
-- Book search uses ASCII normalization for Czech diacritics handling
+- Docker commands on VPS require `sudo` (user `jakub` not in docker group).
+- Prisma client is generated to `app/generated/prisma/` — run `npx prisma generate` after schema changes.
+- The widget is deployed manually to the library's Drupal site, not via CI/CD.
+- `docker-compose` (hyphenated) is used on VPS, not `docker compose`.
