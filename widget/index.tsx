@@ -653,7 +653,7 @@ function getBackendUrl(): string {
     const attr = script?.dataset?.backend;
     if (typeof attr === "string" && attr.trim() !== "" && attr.trim() !== "/") {
         if (attr.startsWith("/")) {
-            return `https://chatbot.144-91-77-107.sslip.io${attr}`;
+            return `https://chatbot.kvkli.cz${attr}`;
         }
         return attr.replace(/\/$/, "");
     }
@@ -663,21 +663,10 @@ function getBackendUrl(): string {
         window.CHATBOT_BACKEND_URL.trim() !== ""
     ) {
         const url = window.CHATBOT_BACKEND_URL.trim();
-        if (
-            url.includes("144-91-77-107.sslip.io") &&
-            !url.includes("chatbot.")
-        ) {
-            return url
-                .replace(
-                    "144-91-77-107.sslip.io",
-                    "chatbot.144-91-77-107.sslip.io",
-                )
-                .replace(/\/$/, "");
-        }
         return url.replace(/\/$/, "");
     }
 
-    return "https://chatbot.144-91-77-107.sslip.io/api/graphql";
+    return "https://chatbot.kvkli.cz/api/graphql";
 }
 
 function mount() {
