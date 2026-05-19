@@ -41,8 +41,8 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 
-# Create logs dir and set ownership
-RUN mkdir -p /app/logs && chown -R nextjs:nodejs /app/logs
+# Create logs and crawler-output dirs and set ownership
+RUN mkdir -p /app/logs /app/crawler-output && chown -R nextjs:nodejs /app/logs /app/crawler-output
 
 USER nextjs
 
