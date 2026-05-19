@@ -7,6 +7,9 @@ const pkg = require("./package.json");
 const reactVersion = pkg.dependencies.react?.replace(/[^0-9.]/g, "") ?? "19";
 console.log(`Building widget.js (React ${reactVersion})…`);
 
+const backendUrl = process.env.WIDGET_BACKEND_URL || "https://chatbot.kvkli.cz/api/graphql";
+console.log(`Backend URL: ${backendUrl}`);
+
 await build({
     entryPoints: ["index.tsx"],
     bundle: true,
@@ -19,6 +22,7 @@ await build({
     outfile: "widget.js",
     define: {
         "process.env.NODE_ENV": '"production"',
+        "__DEFAULT_BACKEND_URL__": JSON.stringify(backendUrl),
     },
     loader: {
         ".tsx": "tsx",

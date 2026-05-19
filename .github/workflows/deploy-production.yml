@@ -77,8 +77,12 @@ jobs:
                   ssh -p 2222 ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} bash << 'EOF'
                   cd /var/www/apollo
                   sudo docker-compose -f docker-compose.kvkli.yml pull
+                  # snap Docker cannot stop containers (AppArmor bug) — restart snap first
+                  sudo snap restart docker
+                  sleep 5
+                  sudo docker-compose -f docker-compose.kvkli.yml down --timeout 30
                   sudo docker-compose -f docker-compose.kvkli.yml up -d --remove-orphans
                   echo "Waiting for app to be healthy..."
-                  sleep 10
+                  sleep 15
                   sudo docker-compose -f docker-compose.kvkli.yml ps
                   EOF

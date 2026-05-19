@@ -80,7 +80,8 @@ const WAITING_MESSAGES = [
 function renderMarkdown(text: string): React.ReactNode[] {
     return text.split("\n").flatMap((line, lineIdx, lines) => {
         const nodes: React.ReactNode[] = [];
-        const regex = /(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
+        // Order matters: bold-link first, then bold, then link
+        const regex = /(\*\*\[[^\]]+\]\([^)]+\)\*\*|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
         let last = 0;
         let match: RegExpExecArray | null;
         let key = lineIdx * 1000;
@@ -91,7 +92,23 @@ function renderMarkdown(text: string): React.ReactNode[] {
                     <span key={key++}>{line.slice(last, match.index)}</span>,
                 );
             const tok = match[0];
-            if (tok.startsWith("**")) {
+            if (tok.startsWith("**[") && tok.endsWith(")**")) {
+                // Bold-wrapped link: **[text](url)**
+                const inner = tok.slice(2, -2);
+                const m = inner.match(/\[([^\]]+)\]\(([^)]+)\)/)!;
+                nodes.push(
+                    <strong key={key++}>
+                        <a
+                            key={key++}
+                            href={m[2]}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            {m[1]}
+                        </a>
+                    </strong>,
+                );
+            } else if (tok.startsWith("**")) {
                 nodes.push(<strong key={key++}>{tok.slice(2, -2)}</strong>);
             } else {
                 const m = tok.match(/\[([^\]]+)\]\(([^)]+)\)/)!;
@@ -314,23 +331,13 @@ const CSS = `
 }
 `;
 
+// ─── Build-time default (injected by esbuild define) ─────────────────────────
+declare const __DEFAULT_BACKEND_URL__: string;
+
 // ─── Main widget component ────────────────────────────────────────────────────
 
 function ChatWidget({ backendUrl }: { backendUrl: string }) {
-    let correctedUrl =
-        backendUrl || "https://chatbot.144-91-77-107.sslip.io/api/graphql";
-
-    if (
-        correctedUrl.includes("144-91-77-107.sslip.io") &&
-        !correctedUrl.includes("chatbot.")
-    ) {
-        correctedUrl = correctedUrl.replace(
-            "144-91-77-107.sslip.io",
-            "chatbot.144-91-77-107.sslip.io",
-        );
-    }
-
-    const normalizedBackendUrl = correctedUrl.replace(/\/$/, "");
+    const normalizedBackendUrl = (backendUrl || __DEFAULT_BACKEND_URL__).replace(/\/$/, "");
     const gqlUrl = normalizedBackendUrl.endsWith("/api/graphql")
         ? normalizedBackendUrl
         : `${normalizedBackendUrl}/api/graphql`;
@@ -666,7 +673,7 @@ function getBackendUrl(): string {
         return url.replace(/\/$/, "");
     }
 
-    return "https://chatbot.kvkli.cz/api/graphql";
+    return __DEFAULT_BACKEND_URL__;
 }
 
 function mount() {
