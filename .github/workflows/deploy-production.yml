@@ -1,11 +1,11 @@
 name: Deploy Backend to Production VPS
 
-# on:
-#     push:
-#         branches: [production]
-#         paths:
-#             - "app/**"
-#             - ".github/workflows/deploy-production.yml"
+on:
+    push:
+        branches: [production]
+        paths:
+            - "app/**"
+            - ".github/workflows/deploy-production.yml"
 
 jobs:
     test:
@@ -65,16 +65,16 @@ jobs:
             - name: Add VPS to known_hosts
               run: |
                   mkdir -p ~/.ssh
-                  ssh-keyscan -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
+                  ssh-keyscan -p 2222 -H ${{ secrets.PROD_HOST }} >> ~/.ssh/known_hosts
 
             - name: Copy docker-compose to VPS
               run: |
-                  scp app/docker-compose.kvkli.yml ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/var/www/apollo/docker-compose.kvkli.yml
+                  scp -P 2222 app/docker-compose.kvkli.yml ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }}:/var/www/apollo/docker-compose.kvkli.yml
 
             - name: Deploy with Docker Compose
               run: |
-                  ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin"
-                  ssh ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} bash << 'EOF'
+                  ssh -p 2222 ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+                  ssh -p 2222 ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} bash << 'EOF'
                   cd /var/www/apollo
                   sudo docker-compose -f docker-compose.kvkli.yml pull
                   sudo docker-compose -f docker-compose.kvkli.yml up -d --remove-orphans

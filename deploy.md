@@ -6,6 +6,7 @@
 | ------------------ | ----------------------------------------------------------------- |
 | **Host**           | VPS (Ubuntu 20.04)                                                |
 | **SSH user**       | `jakub`                                                           |
+| **SSH port**       | `2222` (non-standard)                                             |
 | **Docker**         | 26.1.3 (requires `sudo`)                                          |
 | **Docker Compose** | v2.23.1 (`docker-compose` — hyphenated, NOT `docker compose`)     |
 | **Web server**     | Apache2 (reverse proxy)                                           |
@@ -86,11 +87,11 @@ git push -u origin production
 
 Set these in **GitHub → Settings → Secrets and variables → Actions**:
 
-| Secret        | Description                           | Example          |
-| ------------- | ------------------------------------- | ---------------- |
-| `VPS_HOST`    | Server IP or hostname                 | `123.45.67.89`   |
-| `VPS_USER`    | SSH user                              | `jakub`          |
-| `VPS_SSH_KEY` | Private SSH key (ed25519) for `jakub` | Full PEM content |
+| Secret         | Description                           | Example          |
+| -------------- | ------------------------------------- | ---------------- |
+| `PROD_HOST`    | Server IP or hostname                 | `123.45.67.89`   |
+| `PROD_USER`    | SSH user                              | `jakub`          |
+| `PROD_SSH_KEY` | Private SSH key (ed25519) for `jakub` | Full PEM content |
 
 `GITHUB_TOKEN` is provided automatically by GitHub Actions.
 
@@ -100,10 +101,10 @@ Set these in **GitHub → Settings → Secrets and variables → Actions**:
 # On your local machine
 ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/ghactions_deploy
 
-# Copy public key to server
-ssh-copy-id -i ~/.ssh/ghactions_deploy.pub jakub@<VPS_HOST>
+# Copy public key to server (note: port 2222)
+ssh-copy-id -p 2222 -i ~/.ssh/ghactions_deploy.pub jakub@<VPS_HOST>
 
-# The PRIVATE key content goes into the VPS_SSH_KEY secret
+# The PRIVATE key content goes into the PROD_SSH_KEY secret
 cat ~/.ssh/ghactions_deploy
 ```
 
