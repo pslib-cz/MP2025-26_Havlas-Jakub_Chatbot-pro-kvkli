@@ -7,7 +7,7 @@ export const searchCatalogSpec: ChatCompletionTool = {
     function: {
         name: "searchCatalog",
         description:
-            "Search the library catalog for specific books by title or author. Use this when user asks for a specific book name or author's works. IMPORTANT: Always use plain ASCII characters without diacritics for author names (e.g. use 'Jo Nesbo' not 'Jo Nesbø', 'Kafka' not 'Kafkä'). This prevents encoding errors. After receiving results, ALWAYS verify that every returned book actually matches the requested author/title — discard any results that belong to a different author.",
+            "Search the library catalog for books, audiobooks, music CDs, DVDs, board games, magazines, e-books and other media by title or author. Use this when user asks for a specific book name, author's works, or any library media. IMPORTANT: Always use plain ASCII characters without diacritics for author names (e.g. use 'Jo Nesbo' not 'Jo Nesbø', 'Kafka' not 'Kafkä'). This prevents encoding errors. After receiving results, ALWAYS verify that every returned book actually matches the requested author/title — discard any results that belong to a different author.",
         parameters: {
             type: "object",
             properties: {

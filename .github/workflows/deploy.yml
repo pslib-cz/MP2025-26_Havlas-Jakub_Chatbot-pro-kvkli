@@ -72,6 +72,8 @@ jobs:
 
             - name: Build widget bundle
               working-directory: ./widget
+              env:
+                  WIDGET_BACKEND_URL: ${{ secrets.WIDGET_BACKEND_URL }}
               run: |
                   npm ci
                   node build-widget.mjs

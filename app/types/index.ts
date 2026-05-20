@@ -27,7 +27,7 @@ export type {
     MarcRecord,
     OAIRecord,
 } from "./BookRecord";
-export type { CatalogQueryType, QueryData, BookResult } from "./CatalogQuery";
+export type { CatalogQueryType, QueryData, BookResult, HoldingItem } from "./CatalogQuery";
 export type {
     ConversationHistoryEntry,
     GenerateAnswerArgs,

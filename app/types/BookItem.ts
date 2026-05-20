@@ -1,3 +1,5 @@
+import type { HoldingItem } from "./CatalogQuery";
+
 export type BookItem = {
     id: string;
     title: string;
@@ -8,4 +10,7 @@ export type BookItem = {
     notes?: string;
     url?: string;
     year?: string;
+    availability?: HoldingItem[];
+    availableCopies?: number;
+    totalCopies?: number;
 };
