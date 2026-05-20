@@ -28,9 +28,12 @@ function formatBookCompact(book: BookItem, omitAuthor: boolean): string {
     const url = buildBookUrl(book);
     const title = cleanTitle(book.title);
     const author = stripAuthorRole(book.author);
+    const availStr = book.totalCopies !== undefined
+        ? ` [${book.availableCopies ?? 0}/${book.totalCopies} volných]`
+        : "";
     return omitAuthor
-        ? `- [${title}](${url})`
-        : `- [${title}](${url}) — ${author}`;
+        ? `- [${title}](${url})${availStr}`
+        : `- [${title}](${url}) — ${author}${availStr}`;
 }
 
 /**
@@ -52,6 +55,16 @@ function formatBookDetailed(book: BookItem): string {
                 ? `${book.description.substring(0, 150)}...`
                 : book.description;
         result += `\n${desc}`;
+    }
+    if (book.totalCopies !== undefined) {
+        const avail = book.availableCopies ?? 0;
+        const total = book.totalCopies;
+        const locations = book.availability
+            ?.filter(h => h.status.toLowerCase() === "volný")
+            .map(h => `${h.branch} – ${h.location}`)
+            .filter((v, i, a) => a.indexOf(v) === i) ?? [];
+        const locationStr = locations.length > 0 ? ` (${locations.join("; ")})` : "";
+        result += `\n**Dostupnost:** ${avail} volných z ${total}${locationStr}`;
     }
     return result;
 }

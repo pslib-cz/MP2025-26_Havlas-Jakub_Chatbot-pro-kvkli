@@ -5,6 +5,14 @@ export type QueryData = {
   queryContent: string;
 };
 
+export type HoldingItem = {
+  branch: string;
+  department: string;
+  location: string;
+  signature: string;
+  status: string;
+};
+
 export type BookResult = {
   id: string;
   title: string;
@@ -13,4 +21,7 @@ export type BookResult = {
   description?: string;
   url?: string;
   year?: string;
+  availability?: HoldingItem[];
+  availableCopies?: number;
+  totalCopies?: number;
 };

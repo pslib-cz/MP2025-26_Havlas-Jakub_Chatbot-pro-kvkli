@@ -4,7 +4,7 @@ import axios from "axios";
 import { parse } from "node-html-parser";
 import type { HTMLElement } from "node-html-parser";
 import LoggerService from "./logger.service";
-import type { QueryData, BookResult } from "../../types";
+import type { QueryData, BookResult, HoldingItem } from "../../types";
 
 
 const CATALOG_URL = "https://ipac.kvkli.cz/arl-li/cs/vysledky/";
@@ -53,7 +53,45 @@ export const queryCatalogService = {
                                 tr.text.includes("Téma") || tr.text.includes("Předmět")
                             )?.querySelector("td")?.text.trim();
 
-            const result = {
+            // Parse holdings table (availability)
+            const holdings: HoldingItem[] = [];
+            const holdingsTable = root.querySelector("table.b_holdingsx");
+            if (holdingsTable) {
+                const rows = holdingsTable.querySelectorAll("tbody tr");
+                for (const row of rows) {
+                    const cells = row.querySelectorAll("td");
+                    if (cells.length >= 5) {
+                        holdings.push({
+                            branch: cells[0].text.trim(),
+                            department: cells[1].text.trim(),
+                            location: cells[2].text.trim(),
+                            signature: cells[3].text.trim(),
+                            status: cells[4].text.trim(),
+                        });
+                    }
+                }
+            }
+
+            // Parse copy count from "Počet ex." row as fallback
+            let totalCopies: number | undefined;
+            let availableCopies: number | undefined;
+            const countRow = root.querySelectorAll("tr").find(tr =>
+                tr.querySelector("th")?.text.includes("Počet ex.")
+            );
+            if (countRow) {
+                const countText = countRow.querySelector("td")?.text.trim() || "";
+                const totalMatch = countText.match(/^(\d+)/);
+                const availMatch = countText.match(/volných\s+(\d+)/);
+                if (totalMatch) totalCopies = parseInt(totalMatch[1], 10);
+                if (availMatch) availableCopies = parseInt(availMatch[1], 10);
+            }
+            // If we have holdings but no count row, derive from holdings
+            if (holdings.length > 0 && totalCopies === undefined) {
+                totalCopies = holdings.length;
+                availableCopies = holdings.filter(h => h.status.toLowerCase() === "volný").length;
+            }
+
+            const result: BookResult = {
                 id,
                 title: title.replace(/\s*\/\s*$/, '').trim(),
                 author,
@@ -61,9 +99,12 @@ export const queryCatalogService = {
                 url: `${BOOK_URL}${id}-Arila/?disprec=2&iset=1`,
                 description,
                 subjects,
+                availability: holdings.length > 0 ? holdings : undefined,
+                totalCopies,
+                availableCopies,
             };
 
-            LoggerService.info("Book fetched successfully", { id, title });
+            LoggerService.info("Book fetched successfully", { id, title, holdings: holdings.length });
             return result;
         } catch (error) {
             LoggerService.logError(error as Error, "getBookById", { id });
