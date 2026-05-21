@@ -81,10 +81,50 @@ export async function handleSearchCatalog(
         });
     }
 
-    const books =
-        args.searchType === "title"
-            ? await queryCatalogService.searchByTitle(query, limit)
-            : await queryCatalogService.searchGeneral(query, limit);
+    let books;
+    if (args.searchType === "title") {
+        books = await queryCatalogService.searchByTitle(query, limit);
+
+        // Retry with capitalized first letters if no results
+        if (books.length === 0) {
+            const capitalizedQuery = query
+                .split(" ")
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(" ");
+            if (capitalizedQuery !== query) {
+                LoggerService.warn(
+                    "Title search retrying with capitalized query",
+                    { original: query, capitalized: capitalizedQuery },
+                );
+                books = await queryCatalogService.searchByTitle(
+                    capitalizedQuery,
+                    limit,
+                );
+            }
+        }
+
+        // Fallback to general search if title still found nothing
+        if (books.length === 0) {
+            LoggerService.warn(
+                "Title search failed, falling back to general search",
+                { query },
+            );
+            books = await queryCatalogService.searchGeneral(query, limit);
+        }
+    } else if (args.searchType === "subject") {
+        books = await queryCatalogService.searchBySubject(query, limit);
+    } else {
+        books = await queryCatalogService.searchGeneral(query, limit);
+    }
+
+    // Fallback: if general/title found nothing, try subject search
+    if (books.length === 0 && args.searchType !== "subject") {
+        LoggerService.warn(
+            "searchCatalog: no results, retrying with subject search as fallback",
+            { originalType: args.searchType, query },
+        );
+        books = await queryCatalogService.searchBySubject(query, limit);
+    }
 
     if (books.length === 0) {
         return JSON.stringify({

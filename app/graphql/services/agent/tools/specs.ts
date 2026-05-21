@@ -13,9 +13,9 @@ export const searchCatalogSpec: ChatCompletionTool = {
             properties: {
                 searchType: {
                     type: "string",
-                    enum: ["title", "author", "general"],
+                    enum: ["title", "author", "general", "subject"],
                     description:
-                        "Type of search: 'title' for book titles, 'author' for author names, 'general' for general search",
+                        "Type of search: 'title' for book titles, 'author' for author names, 'general' for general search, 'subject' for topic/theme search (e.g. 'emoce děti', 'válka', 'příroda'). Use 'subject' when the user wants books ABOUT a topic.",
                 },
                 query: {
                     type: "string",
@@ -200,6 +200,26 @@ export const getEventsSpec: ChatCompletionTool = {
                         "Maximum number of events to return (default 10, max 30)",
                 },
             },
+        },
+    },
+};
+
+export const getServiceInfoSpec: ChatCompletionTool = {
+    type: "function",
+    function: {
+        name: "getServiceInfo",
+        description:
+            "Get LIVE detailed information about a specific library service by scraping the official kvkli.cz page. Use this when the user asks about HOW something works, service rules, fees, registration, or any practical info about library services. Pick the most relevant page from the list below.\n\nAvailable pages:\n- /sluzby/prihlasit-se-do-knihovny — Registration (registrace, čtenářský průkaz)\n- /sluzby/pujcovani-a-cetba/vse-o-pujcovani — Borrowing rules (výpůjční lhůta, prodlužování, rezervace, zpozdné)\n- /sluzby/pujcovani-a-cetba/jak-zaplatit — How to pay (platby, poplatky, finanční konto)\n- /sluzby/pujcovani-a-cetba-/kde-najit — Where to find things (patra, oddělení, umístění fondu)\n- /sluzby/meziknihovni-sluzby — Interlibrary services (MVS)\n- /sluzby/pujcovani-a-cetba-/vydejni-box — Pickup box (výdejní box)\n- /sluzby/donaskova-sluzba — Home delivery service (donáška, senioři)\n- /sluzby/studovny-studijni-boxy — Reading rooms and study boxes\n- /sluzby/studium-/kopirovani-tisk-skenovani — Copy/print/scan services\n- /sluzby/kreativni-cinnosti/3d-tisk — 3D printing\n- /sluzby/kreativni-cinnosti/deskove-hry — Board games\n- /sluzby/kreativni-knihovna/hudebni-nastroje — Musical instruments\n- /sluzby/kreativni-knihovna/vr — Virtual reality\n- /sluzby/kreativni-knihovna/poslech-hudby — Music listening (vinyl, gramofon)\n- /sluzby/kreativni-cinnosti/sici-stroj — Sewing machine\n- /sluzby/ostatni/internet-wi-fi — Internet/Wi-Fi\n- /sluzby/ostatni/pronajmy-prostor — Space rental\n- /sluzby/ostatni/knihovni-kavarna — Library café\n- /sluzby/ostatni/moznosti-parkovani — Parking\n- /o-nas/o-knihovne/knihovni-rad — Library rules (knihovní řád)\n- /o-nas/o-knihovne/cenik-sluzeb — Price list (ceník služeb)\n- /pro-deti/chci-se-stat-ctenarem — Child registration\n- /pro-deti/jak-to-u-nas-chodi — How it works for kids\n- /sluzby/citace-pro — Citation service\n- /sluzby/resersni-sluzba — Research service (rešerše)\n- /e-knihovna/e-vypujcky — E-books (e-výpůjčky)",
+        parameters: {
+            type: "object",
+            properties: {
+                page: {
+                    type: "string",
+                    description:
+                        "The page slug to fetch (e.g. '/sluzby/prihlasit-se-do-knihovny'). Must be one of the available pages listed in the tool description.",
+                },
+            },
+            required: ["page"],
         },
     },
 };
