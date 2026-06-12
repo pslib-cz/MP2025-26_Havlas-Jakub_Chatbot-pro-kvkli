@@ -1,0 +1,283 @@
+# Problémy z produkčního nasazení — Feedback od M.
+
+---
+
+## Problém 1: Slepota vůči dostupnosti výtisků
+
+**Popis:** Aleš (Alda) dohledá hlavičku záznamu (titul, autora), ale nevidí úroveň konkrétních svazků a jejich lokací/statusů. V systémovém promptu je explicitně: `"Dostupnost knih neznáš — odkaž na knihovnu nebo ipac.kvkli.cz"`. Funkce `getBookById` v `queryCatalog.service.ts` parsuje detail stránku, ale **neextrahuje holdings tabulku** (Půjčovna, Oddělení, Umístění, Signatura, Info/status).
+
+**Co víme:** Data o jednotkách (holdings) **jsou dostupná** na detail stránce katalogu. Z HTML, které jsi poslal, je vidět tabulka s třídou `b_holdingsx` obsahující:
+- Půjčovna (např. "Dětská")
+- Oddělení (např. "Dětské")
+- Umístění (např. "0-6_let»AW")
+- Signatura (např. "M 42009/[1] a")
+- Info/status (např. "volný", "vypůjčeno")
+
+Tato data **chodí v HTML** detail stránky, ale `getBookById()` je neparsuje.
+
+---
+
+### Řešení A: Rozšířit `getBookById` o parsování holdings tabulky (DOPORUČENO)
+
+**Složitost:** Nízká  
+**Dopad:** Plně řeší problém
+
+1. **Rozšířit typ `BookResult`** o pole `availability`:
+   ```typescript
+   export type HoldingItem = {
+       branch: string;      // Půjčovna
+       department: string;  // Oddělení
+       location: string;    // Umístění
+       signature: string;   // Signatura
+       status: string;      // "volný" | "vypůjčeno" | jiné
+   };
+
+   export type BookResult = {
+       // ... stávající pole
+       availability?: HoldingItem[];
+       availableCopies?: number;
+       totalCopies?: number;
+   };
+   ```
+
+2. **Přidat parsing holdings tabulky** do `getBookById()` v `queryCatalog.service.ts`:
+   ```typescript
+   // Parse holdings table (class "b_holdingsx")
+   const holdingsTable = root.querySelector("table.b_holdingsx");
+   const holdings: HoldingItem[] = [];
+   if (holdingsTable) {
+       const rows = holdingsTable.querySelectorAll("tbody tr");
+       for (const row of rows) {
+           const cells = row.querySelectorAll("td");
+           if (cells.length >= 5) {
+               holdings.push({
+                   branch: cells[0].text.trim(),
+                   department: cells[1].text.trim(),
+                   location: cells[2].text.trim(),
+                   signature: cells[3].text.trim(),
+                   status: cells[4].text.trim(),
+               });
+           }
+       }
+   }
+   ```
+
+3. **Alternativně parsovat z "Počet ex." řádku:**
+   ```typescript
+   // Fallback: parse from "Počet ex." row  (e.g. "2, z toho volných 2")
+   const countRow = root.querySelectorAll("tr").find(tr =>
+       tr.querySelector("th")?.text.includes("Počet ex.")
+   );
+   if (countRow) {
+       const text = countRow.querySelector("td")?.text.trim();
+       // Parse "2, z toho volných 2" → totalCopies=2, availableCopies=2
+   }
+   ```
+
+4. **Upravit systémový prompt** — odstranit řádek `"Dostupnost knih neznáš"` a nahradit instrukcí:
+   ```
+   - Výsledky searchCatalog obsahují informace o dostupnosti (počet výtisků, volné/vypůjčené, umístění). Vždy uživateli sděl dostupnost a kde knihu najde.
+   ```
+
+5. **Upravit formatování** v `formatting.ts` aby zobrazovalo dostupnost:
+   ```
+   ### 📘 [Název](url)
+   **Autor:** XY (2005)
+   **Dostupnost:** 2 výtisky, 2 volné (Dětská knihovna, 0-6_let»AW)
+   ```
+
+---
+
+### Řešení B: Vytvořit separátní tool `getBookAvailability`
+
+**Složitost:** Střední  
+**Dopad:** Řeší problém, ale agent musí volat 2 tooly (search + availability)
+
+1. Vytvořit nový tool `getBookAvailability(bookId)` který:
+   - Načte detail stránku podle ID
+   - Extrahuje pouze holdings tabulku
+   - Vrátí strukturovaná data o dostupnosti
+
+2. Registrovat v `registry.ts`, přidat spec + schema + handler
+
+3. Upravit systémový prompt aby agent věděl, že po nalezení knihy může zkontrolovat dostupnost
+
+**Nevýhoda:** Vyžaduje extra API call (extra latence), agent musí správně zvolit sekvenci toolů.
+
+---
+
+### Řešení C: Použít OAI-PMH API pro holdings (pokud podporuje)
+
+**Složitost:** Vysoká / Nejistá  
+**Dopad:** Závisí na tom, co OAI vrací
+
+Dle dokumentace OAI-PMH (`AOIAPI.md`) je API primárně pro harvesting metadat (MARC záznamy). Holdings/dostupnost výtisků se v MARC záznamech typicky **nenachází** (závisí na konfiguraci setu). Toto by vyžadovalo ověření s Honzou.
+
+**Nedoporučeno** — HTML scraping detail stránky je spolehlivější a data tam prokazatelně jsou.
+
+---
+
+## Problém 2: Příliš úzké mantinely pro fond (CD, audioknihy)
+
+**Popis:** Když uživatel žádá audioknihu (Zaklínač na CD), bot odmítne s: "jako knihovník mohu pomáhat pouze s dotazy týkajícími se knihovny, knih a literatury." Systémový prompt v sekci "POVOLENÁ TÉMATA" uvádí pouze "Knihy, autoři, literatura" — nezahrnuje explicitně audioknihy, CD, deskové hry, časopisy a e-knihy.
+
+**Příčina:** V `ai.prompt.ts`, sekce POVOLENÁ TÉMATA:
+```
+- Knihy, autoři, literatura, doporučení knih, děj knih
+- Katalog knihovny, dostupnost, vyhledávání
+```
+
+Chybí explicitní zmínka o dalších typech médií ve fondu knihovny.
+
+---
+
+### Řešení A: Rozšířit POVOLENÁ TÉMATA v systémovém promptu (DOPORUČENO)
+
+**Složitost:** Minimální  
+**Dopad:** Plně řeší problém
+
+Upravit v `app/graphql/utils/ai.prompt.ts` sekci POVOLENÁ TÉMATA:
+
+```
+POVOLENÁ TÉMATA (odpovídej POUZE na tato):
+- Knihy, autoři, literatura, doporučení knih, děj knih
+- Audioknihy, hudební CD, DVD, deskové hry, časopisy, e-knihy a veškerý fond knihovny
+- Katalog knihovny, dostupnost, vyhledávání
+- Otevírací doba, pobočky, kontakty
+- Akce, události, kurzy, workshopy knihovny
+- Registrace, poplatky, pravidla knihovny, služby
+- Obecné knihovnické dotazy
+```
+
+A přidat do sekce KNIHY:
+```
+- Fond knihovny zahrnuje nejen knihy, ale i audioknihy, hudební CD, DVD, Blu-ray, deskové hry, časopisy, e-knihy a další média. Vše vyhledávej přes searchCatalog.
+```
+
+---
+
+### Řešení B: Rozšířit i popis tool `searchCatalog` spec
+
+**Složitost:** Minimální  
+**Dopad:** Pomáhá modelu vybrat správný tool i pro audioknihy
+
+Upravit `searchCatalogSpec.function.description`:
+```
+"Search the library catalog for books, audiobooks, music CDs, DVDs, board games, 
+magazines, and e-books by title or author..."
+```
+
+---
+
+### Řešení C: Kombinace A + B (DOPORUČENO)
+
+Provést obě úpravy — prompt i tool spec. Tím se zajistí, že:
+1. Agent neodmítne dotaz (prompt říká, že je to povolené téma)
+2. Agent zvolí správný tool (spec popisuje, že catalog obsahuje i jiná média)
+
+---
+
+## Problém 3: Udržení kontextu při doplňování dotazu (H. R. Giger)
+
+**Popis:** Uživatel postupně doplňoval dotaz na H. R. Gigera a Aleš reagoval zmateně — místo uceleného dotazu skládal po kouscích a vracel duplicitní záznamy.
+
+**Příčina — analýza:**
+
+Konverzační historie se do AI předává takto (`ai.service.ts`):
+```typescript
+for (const { question, answer } of conversationHistory) {
+    history.addUser(question);
+    history.addAssistant(answer);
+}
+history.addUser(sanitizedPromptText); // nový dotaz
+```
+
+AI model dostane **celou historii** a pak novou zprávu. Problém je, že:
+1. **Model volá searchCatalog pro každou fragmentární zprávu zvlášť** — místo aby pochopil, že uživatel upřesňuje/doplňuje předchozí dotaz.
+2. **Systémový prompt nemá instrukce pro práci s kontextem** — neříká modelu, jak nakládat s postupným upřesňováním dotazu.
+3. **Není deduplikace napříč konverzací** — agent může vracet stejné knihy znovu.
+
+---
+
+### Řešení A: Přidat instrukce pro kontextové vyhledávání do systémového promptu (DOPORUČENO)
+
+**Složitost:** Nízká  
+**Dopad:** Výrazné zlepšení bez změny kódu
+
+Přidat do `ai.prompt.ts` novou sekci:
+
+```
+═══════════════════════════════════════════════════════════
+KONTEXTOVÉ VYHLEDÁVÁNÍ — PRÁCE S HISTORIÍ KONVERZACE
+═══════════════════════════════════════════════════════════
+
+- Když uživatel postupně upřesňuje nebo doplňuje dotaz (např. nejdřív napíše "H. R." a pak "Giger"), VŽDY spoj fragmenty do jednoho uceleného vyhledávacího dotazu.
+- NIKDY nehledej každý fragment zvlášť. Nejdřív analyzuj celou konverzaci a sestav kompletní query.
+- Pokud jsi na podobný dotaz už odpověděl, nevraceji duplicitní výsledky. Místo toho upřesni nebo rozšiř předchozí odpověď.
+- Při nejasnosti se zeptej: "Myslíte tím [celý dotaz]?" — než začneš hledat.
+- Příklady:
+  - User: "hledám něco od H. R." → "Můžete upřesnit autora?"
+  - User: "Giger" → searchCatalog(author: "H. R. Giger")
+  - User: "hledám Gigera" → User: "myslím knihy s jeho obrazy" → searchCatalog(general: "H. R. Giger obrazy")
+```
+
+---
+
+### Řešení B: Přidat pre-processing konverzační historie (střední složitost)
+
+**Složitost:** Střední  
+**Dopad:** Robustnější řešení na úrovni kódu
+
+Vytvořit funkci `summarizeConversationContext()` která:
+1. Analyzuje posledních N zpráv
+2. Detekuje, zda nová zpráva je upřesnění předchozího dotazu (krátká zpráva, navazuje na téma)
+3. Pokud ano, sloučí do jednoho kontextového dotazu před předáním agentovi
+
+```typescript
+function isFollowUp(current: string, previous: string): boolean {
+    // Krátká zpráva (< 5 slov) po delším dotazu je pravděpodobně upřesnění
+    const wordCount = current.trim().split(/\s+/).length;
+    return wordCount <= 5;
+}
+
+function mergeFollowUp(history: ConversationHistoryEntry[], current: string): string {
+    // Najdi poslední dotaz a spoj s aktuální zprávou
+    const lastQuestion = history[history.length - 1]?.question;
+    if (lastQuestion && isFollowUp(current, lastQuestion)) {
+        return `${lastQuestion} ${current}`;
+    }
+    return current;
+}
+```
+
+**Pozor:** Toto může být křehké a zavádět nechtěné chování. Prompt-based řešení (A) je bezpečnější.
+
+---
+
+### Řešení C: Kombinace A + deduplikace v handleru
+
+**Složitost:** Nízká-Střední  
+**Dopad:** Řeší i duplicitní výsledky
+
+1. Přidat prompt instrukce (Řešení A)
+2. V `handleSearchCatalog` přidat parameter `excludeIds?: string[]` — agent může předat ID knih, které už zobrazil
+3. Nebo: agent sám filtruje výsledky na základě předchozích odpovědí (stačí dobrý prompt)
+
+---
+
+## Souhrn doporučených řešení
+
+| # | Problém | Doporučené řešení | Typ změny |
+|---|---------|-------------------|-----------|
+| 1 | Dostupnost výtisků | A — rozšířit `getBookById` + upravit prompt | Kód + Prompt |
+| 2 | Úzké mantinely (CD, audioknihy) | C — rozšířit prompt + tool spec | Prompt |
+| 3 | Kontext při doplňování | A — přidat instrukce do promptu | Prompt |
+
+---
+
+## Další kroky
+
+- [ ] Vyber řešení pro každý problém
+- [ ] Implementace dle výběru
+- [ ] Testování na produkci
+- [ ] Feedback od M. a kolegů

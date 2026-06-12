@@ -390,3 +390,6 @@ sudo docker system df
 6. **GHCR image visibility** — The repo is under `pslib-cz` org. Ensure the GHCR package is accessible (either public, or the deploy token has `read:packages` scope). The `GITHUB_TOKEN` in Actions automatically has this scope.
 
 7. **Proxy timeout** — Apache `ProxyTimeout` is set to 600s (10 min) to accommodate long-running GraphQL operations like website crawling. This is intentional.
+
+
+ <script type="text/javascript" src="{"$_SITE/js/widget.js"|fileversion}" data-backend="https://chatbot.kvkli.cz/api/graphql"></script>
