@@ -215,4 +215,8 @@ export const queryCatalogService = {
     async searchGeneral(query: string, limit = 5): Promise<BookResult[]> {
         return this.queryCatalog({ typeSearch: "G", queryContent: query }, limit);
     },
+
+    async searchBySubject(subject: string, limit = 5): Promise<BookResult[]> {
+        return this.queryCatalog({ typeSearch: "SUBJECT", queryContent: subject }, limit);
+    },
 };

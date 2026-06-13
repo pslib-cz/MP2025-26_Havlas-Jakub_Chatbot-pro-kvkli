@@ -10,6 +10,7 @@ import {
     scrapeEventsFiltered,
     scrapeOfficeInfo,
 } from "../../scraper.service";
+import { SERVICE_PAGES, scrapeServicePage } from "../../serviceInfo.service";
 import LoggerService from "../../logger.service";
 import {
     SearchWebsiteSchema,
@@ -17,6 +18,7 @@ import {
     GetOpeningHoursSchema,
     GetEventsSchema,
     GetOfficeInfoSchema,
+    GetServiceInfoSchema,
 } from "./schemas";
 
 // ─── Search Website (semantic search — last resort) ───────────────────────────
@@ -390,4 +392,50 @@ export async function handleGetOfficeInfo(
                 "Nepodařilo se načíst informace o pobočce z webu knihovny.",
         });
     }
+}
+
+// ─── Get Service Info (live scraping of service pages) ────────────────────────
+
+export async function handleGetServiceInfo(
+    args: z.infer<typeof GetServiceInfoSchema>,
+): Promise<string> {
+    const page = args.page;
+
+    LoggerService.logAIFunctionCall("getServiceInfo", { page });
+
+    // Validate that the page is in our known sitemap
+    if (!SERVICE_PAGES[page]) {
+        const availablePages = Object.entries(SERVICE_PAGES)
+            .map(([slug, info]) => `${slug} — ${info.title}`)
+            .join("\n");
+
+        return JSON.stringify({
+            status: "error",
+            message: `Neznámá stránka: '${page}'. Použij jednu z dostupných stránek.`,
+            availablePages,
+        });
+    }
+
+    const content = await scrapeServicePage(page);
+
+    if (!content) {
+        return JSON.stringify({
+            status: "error",
+            message: `Nepodařilo se načíst obsah stránky ${page}.`,
+        });
+    }
+
+    // Truncate very long pages to avoid token overflow
+    const maxLength = 4000;
+    const truncated = content.length > maxLength
+        ? content.slice(0, maxLength) + "\n\n[…obsah zkrácen]"
+        : content;
+
+    return JSON.stringify({
+        status: "ok",
+        page,
+        title: SERVICE_PAGES[page].title,
+        url: `https://www.kvkli.cz${page}`,
+        content: truncated,
+    });
 }

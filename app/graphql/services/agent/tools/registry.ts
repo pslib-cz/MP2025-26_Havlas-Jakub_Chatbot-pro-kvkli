@@ -10,6 +10,7 @@ import {
     GetOfficeInfoSchema,
     GetContactSchema,
     GetEventsSchema,
+    GetServiceInfoSchema,
     SearchWebsiteSchema,
 } from "./schemas";
 
@@ -21,6 +22,7 @@ import {
     getOfficeInfoSpec,
     getContactSpec,
     getEventsSpec,
+    getServiceInfoSpec,
     searchWebsiteSpec,
 } from "./specs";
 
@@ -35,6 +37,7 @@ import {
     handleGetOfficeInfo,
     handleGetContact,
     handleGetEvents,
+    handleGetServiceInfo,
     handleSearchWebsite,
 } from "./infoHandlers";
 
@@ -89,6 +92,14 @@ export function createToolRegistry(): ToolRegistry {
         getEventsSpec,
         GetEventsSchema,
         handleGetEvents,
+    );
+
+    // ── Service info (live scraping of service pages) ─────────────────
+    registry.register(
+        "getServiceInfo",
+        getServiceInfoSpec,
+        GetServiceInfoSchema,
+        handleGetServiceInfo,
     );
 
     // ── Fallback: semantic search (use ONLY when no dedicated tool fits) ──

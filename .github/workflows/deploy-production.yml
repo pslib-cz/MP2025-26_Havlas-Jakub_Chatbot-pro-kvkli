@@ -75,14 +75,30 @@ jobs:
               run: |
                   ssh -p 2222 ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} "echo '${{ secrets.GITHUB_TOKEN }}' | sudo docker login ghcr.io -u ${{ github.actor }} --password-stdin"
                   ssh -p 2222 ${{ secrets.PROD_USER }}@${{ secrets.PROD_HOST }} bash << 'EOF'
+                  set -e
                   cd /var/www/apollo
+
+                  # Pull new image
                   sudo docker-compose -f docker-compose.kvkli.yml pull
-                  # snap Docker cannot stop containers (AppArmor bug) — restart snap first
+
+                  # Snap Docker AppArmor bug: must restart snap before stopping containers
                   sudo snap restart docker
-                  sleep 5
-                  sudo docker-compose -f docker-compose.kvkli.yml down --timeout 30
+                  # Wait for Docker daemon to be ready again
+                  for i in $(seq 1 30); do
+                    sudo docker info >/dev/null 2>&1 && break
+                    echo "Waiting for Docker daemon... ($i)"
+                    sleep 2
+                  done
+
+                  # Now stop and recreate
+                  sudo docker-compose -f docker-compose.kvkli.yml down --timeout 60 || {
+                    echo "Down failed, force-removing containers..."
+                    sudo docker rm -f kvkli-chatbot kvkli-postgres kvkli-chromadb 2>/dev/null || true
+                  }
                   sudo docker-compose -f docker-compose.kvkli.yml up -d --remove-orphans
+
+                  # Wait for health checks
                   echo "Waiting for app to be healthy..."
-                  sleep 15
+                  sleep 20
                   sudo docker-compose -f docker-compose.kvkli.yml ps
                   EOF

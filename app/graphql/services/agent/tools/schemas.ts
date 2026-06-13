@@ -3,7 +3,7 @@
 import { z } from "zod";
 
 export const SearchCatalogSchema = z.object({
-    searchType: z.enum(["title", "author", "general"]),
+    searchType: z.enum(["title", "author", "general", "subject"]),
     query: z.string().min(1),
     count: z.number().optional(),
     fetchAll: z.boolean().optional(),
@@ -53,4 +53,8 @@ export const GetEventsSchema = z.object({
 
 export const GetOfficeInfoSchema = z.object({
     branch: z.string().optional(),
+});
+
+export const GetServiceInfoSchema = z.object({
+    page: z.string().min(1),
 });
