@@ -1,3 +1,122 @@
+# Alda — an AI librarian for the Liberec Regional Research Library
+
+A retrieval-augmented chat widget that answers questions about a public library: its catalogue, opening hours, events, services and contacts. Built as my secondary-school final project at SPŠSE Liberec (2025/26).
+
+The bot decides for itself which tool to reach for — searching the catalogue, recommending a book, finding a title from a description of its plot, or answering from the library's own website, which is crawled into a vector store.
+
+> **Status: prototype. Never put into production.** It did not reach the answer accuracy the library needed, and the reason was the source data rather than the model — see [The data was the problem](#the-data-was-the-problem) below. That section is the most interesting part of this repository.
+
+<!-- DOPLNIT: screenshot widgetu a screenshot backoffice. Ulož je do docs/ a odkaz nahraď:
+![Alda chat widget](docs/widget.png)
+![Admin back-office](docs/backoffice.png)
+-->
+
+---
+
+## Stack
+
+| Layer | Tech |
+|---|---|
+| App | Next.js, TypeScript |
+| API | GraphQL (Apollo), single `/api/graphql` endpoint |
+| Data | PostgreSQL via Prisma |
+| Retrieval | ChromaDB vector store, OpenAI API |
+| Widget | Standalone embeddable build, separate from the app |
+| Delivery | Docker, GitHub Actions, self-administered VPS, separate dev and production environments |
+| Tests | Unit and integration |
+
+```
+app/      Next.js application — GraphQL API, admin back-office, retrieval and tool routing
+widget/   Embeddable chat widget dropped into the library's own website
+```
+
+---
+
+## What it does
+
+**Chat widget.** Embeds into the library's site. A visitor asks in plain Czech; the model picks a tool — catalogue search, contact lookup, opening hours, book recommendation — and answers from retrieved context rather than from its own weights.
+
+**Website crawl into RAG.** The library's public pages are crawled and chunked into ChromaDB, so answers about services and events stay grounded in the library's own wording. Crawl progress is polled through GraphQL rather than pushed over a socket.
+
+**Admin back-office.** Every prompt, answer and user rating is stored and reviewable:
+- a pie chart of positive / negative / unrated answers, filterable by date range
+- a paginated table of all prompts with their answers and feedback
+- CSV export (with a BOM, so Excel opens Czech text correctly)
+
+The point of the back-office is diagnosis: filter the negatively rated prompts and you can tell whether a bad answer came from missing data, from the system prompt, or from the model picking the wrong tool.
+
+---
+
+## The data was the problem
+
+The honest headline of this project is that the retrieval was limited by the catalogue, not by the model — and that this is invisible until you measure it.
+
+In a catalogue of roughly **700,000 records, only about 65% had a populated author field.** For a large share of the classics the author's name is not in the author field at all; it sits inside the title string. Ask for *Babička* by Božena Němcová and the record that should answer you has no author on it.
+
+The failure mode this produces is the bad one: **nothing errors.** Author-based retrieval returns a confident, plausible, wrong answer for a third of the corpus.
+
+Before changing anything, I measured the gaps field by field. That audit is still in this repository:
+
+| File | What it holds |
+|---|---|
+| `field_statistics_detailed.csv` | Fill rate per catalogue field |
+| `field_combination_matrix_full.csv` | Which fields appear together, and which never do |
+| `identifiedProblems.md` | Written-up findings |
+| `Problems.csv` | Problem list in tabular form |
+
+A second constraint was architectural: the chatbot ran on the library's web server while the catalogue lives on a separate system, with no direct link between them.
+
+**What I did not solve** was designing a retrieval pipeline that worked around the inconsistency — normalising the metadata, or extracting authors out of title strings, instead of trusting a schema that was only two-thirds populated. I ran out of road before I got there, and that is the part I would most want to learn to do properly.
+
+---
+
+## Security
+
+Prompt injection was not theoretical here — classmates attacked the bot as soon as it was reachable. The defense is layered:
+
+1. **Input sanitization** (`preprocessing.ts`) — strips null bytes and control characters, caps input at 1000 characters against large-payload attacks.
+2. **System prompt hardening** (`ai.prompt.ts`) — explicit identity, an explicit refusal rule for instruction-override attempts, a ban on revealing the system instructions, and a topic allow-list and deny-list.
+3. **Output validation** (`validateOutput()`) — regex detection of system-prompt leakage and of internal tool names, blocking of generated code blocks, truncation at 4000 characters, and a safe fallback message when anything trips.
+4. **Rate limiting** — 20 requests per hour per IP.
+5. **Origin guard** — the bot only answers requests from allow-listed domains.
+
+Admin authentication uses a JWT in an `HttpOnly; Secure; SameSite=Strict` cookie with an 8-hour lifetime, after migrating off `sessionStorage` — which any XSS could have read.
+
+**Known weakness:** regex-based leak detection is not airtight; a careful attacker could paraphrase around it. A second model acting as a judge, or a moderation endpoint, would be the stronger version.
+
+---
+
+## Running locally
+
+<!-- DOPLNIT: skutečné kroky vytáhni z deploy.md, ať sedí. Nevymýšlej je. -->
+
+```bash
+# DOPLNIT: install, env vars, database, seed, dev server
+```
+
+Environment variables needed: **[DOPLNIT: seznam z deploy.md]**
+
+Deployment steps are in [`deploy.md`](deploy.md).
+
+---
+
+## Author
+
+Jakub Havlas — [havlasweb.cz/portfolio](https://havlasweb.cz/portfolio/) · [github.com/JakubHavlas](https://github.com/JakubHavlas)
+
+---
+
+<!--
+================================================================
+  Pod tuhle čáru vlož BEZE ZMĚNY celou stávající sekci
+  "Odpovědi na otázky z posudků (obhajoba)" ze starého README.
+  Je dobrá a má zůstat — jen patří pod technický úvod, ne nad něj.
+================================================================
+-->
+
+## Obhajoba — odpovědi na otázky z posudků
+
+*(česky, pro potřeby obhajoby maturitní práce)*
 # MP2025-26_Havlas-Jakub_Chatbot-pro-kvkli
 
 https://jakubhavlasmp.youtrack.cloud/dashboard
